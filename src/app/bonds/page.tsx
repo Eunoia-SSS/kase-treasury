@@ -1,0 +1,20 @@
+import { ArrowUpRight, Landmark, Plus } from "lucide-react";
+import { Card, MockLabel, PageHeading, SectionHeading, StatusBadge } from "@/components/ui/primitives";
+import { bonds, holders } from "@/lib/mock-data";
+import { formatCurrency, formatDate, formatCompactNumber } from "@/lib/format";
+
+export default function BondsPage() {
+  const units = bonds.reduce((sum, bond) => sum + bond.outstandingUnits, 0);
+  return <>
+    <PageHeading eyebrow="ASSET MANAGEMENT" title="Bond registry" description="Review tokenized bond series, outstanding supply, and holder distribution." action={<button className="button button-primary" disabled title="Bond issuance is planned for a later milestone"><Plus size={16} />Issue new bond</button>} />
+    <div className="dashboard-grid stat-grid compact-stats">
+      <Card className="metric-card"><div className="metric-top"><span>Bond series</span><span className="metric-icon"><Landmark size={18} /></span></div><div className="metric-value">03</div><div className="metric-bottom"><span>2 active · 1 upcoming</span><span className="metric-trend trend-up"><ArrowUpRight size={12} />+1 this quarter</span></div></Card>
+      <Card className="metric-card"><div className="metric-top"><span>Total units issued</span><span className="metric-icon">#</span></div><div className="metric-value">{formatCompactNumber(units)}</div><div className="metric-bottom"><span>Across all series</span><span className="metric-trend trend-up">100% tracked</span></div></Card>
+      <Card className="metric-card"><div className="metric-top"><span>Registered holders</span><span className="metric-icon">◎</span></div><div className="metric-value">3,482</div><div className="metric-bottom"><span>Wallets in demo registry</span><span className="metric-trend">Mock registry</span></div></Card>
+    </div>
+    <Card className="page-table-card"><div className="card-heading-row"><SectionHeading title="All bond series" detail="Token issuance and lifecycle summary" /><MockLabel /></div><div className="table-scroll"><table className="data-table full-table"><thead><tr><th>Bond series</th><th>Coupon rate</th><th>Face value</th><th>Issued units</th><th>Outstanding value</th><th>Maturity</th><th>Status</th></tr></thead><tbody>{bonds.map((bond) => <tr key={bond.id}><td><div className="bond-cell"><span className={`bond-mark mark-${bond.color}`}>{bond.ticker.slice(0, 1)}</span><span><strong>{bond.name}</strong><small>{bond.ticker} <span>·</span> {bond.issuer}</small></span></div></td><td>{bond.couponRate.toFixed(1)}% <small className="subtle-inline">annual</small></td><td>{formatCurrency(bond.faceValue)}</td><td>{formatCompactNumber(bond.outstandingUnits)}</td><td><strong>{formatCurrency(bond.faceValue * bond.outstandingUnits)}</strong></td><td>{formatDate(bond.maturityDate)}</td><td><StatusBadge tone={bond.status === "Active" ? "green" : "blue"}>{bond.status}</StatusBadge></td></tr>)}</tbody></table></div></Card>
+    <Card className="page-table-card"><div className="card-heading-row"><SectionHeading title="Recent holder records" detail="Sample holder rows from the mock registry" /><span className="holder-count">Showing {holders.length} sample wallets</span></div><div className="table-scroll"><table className="data-table full-table"><thead><tr><th>Wallet</th><th>Bond series</th><th>Units held</th><th>Ownership</th><th>Record-date eligible</th></tr></thead><tbody>{holders.map((holder) => <tr key={`${holder.walletAddress}-${holder.bondId}`}><td><code className="wallet-code">{holder.walletAddress}</code></td><td>{bonds.find((bond) => bond.id === holder.bondId)?.ticker}</td><td>{formatCompactNumber(holder.units)}</td><td>{holder.sharePercent.toFixed(2)}%</td><td><StatusBadge tone={holder.eligible ? "green" : "amber"}>{holder.eligible ? "Eligible" : "Pending"}</StatusBadge></td></tr>)}</tbody></table></div></Card>
+    <p className="page-footnote">Holder entries and issuance totals are fabricated for demonstration and do not represent live securities or on-chain balances.</p>
+  </>;
+}
+

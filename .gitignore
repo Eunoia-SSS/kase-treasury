@@ -1,0 +1,56 @@
+# Dependencies
+node_modules/
+.pnp/
+.pnp.*
+
+# Next.js and build output
+.next/
+out/
+build/
+dist/
+coverage/
+.vercel/
+.turbo/
+.parcel-cache/
+*.tsbuildinfo
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.seed
+*.mnemonic
+secrets.*
+id.json
+wallet.json
+keypair.json
+*wallet*.json
+*keypair*.json
+
+# Anchor, Solana, and Rust build/local state
+target/
+.anchor/
+test-ledger/
+ledger/
+validator-ledger/
+solana-test-validator.log
+*.so
+*.keypair
+
+# Logs and temporary files
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db
+
+# Editor and OS files
+.vscode/
+.idea/
+*.swp
+*.swo

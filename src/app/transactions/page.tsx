@@ -1,0 +1,18 @@
+import { ArrowUpRight, CircleCheck, Clock3, ExternalLink, FileClock } from "lucide-react";
+import { Card, MockLabel, PageHeading, SectionHeading, StatusBadge } from "@/components/ui/primitives";
+import { transactions } from "@/lib/mock-data";
+import { formatCurrency, formatDate } from "@/lib/format";
+
+export default function TransactionsPage() {
+  return <>
+    <PageHeading eyebrow="AUDIT TRAIL" title="Transaction history" description="Review lifecycle events and settlement activity across your bond series." action={<button className="button button-secondary" disabled title="Explorer signatures are mock values"><ExternalLink size={15} />Solana Explorer</button>} />
+    <div className="dashboard-grid stat-grid compact-stats">
+      <Card className="metric-card"><div className="metric-top"><span>Total events</span><span className="metric-icon"><FileClock size={18} /></span></div><div className="metric-value">128</div><div className="metric-bottom"><span>Recorded in demo history</span><span className="metric-trend">All time</span></div></Card>
+      <Card className="metric-card"><div className="metric-top"><span>Confirmed</span><span className="metric-icon"><CircleCheck size={18} /></span></div><div className="metric-value">126</div><div className="metric-bottom"><span>Illustrative confirmations</span><span className="metric-trend trend-up">98.4%</span></div></Card>
+      <Card className="metric-card"><div className="metric-top"><span>Pending</span><span className="metric-icon"><Clock3 size={18} /></span></div><div className="metric-value">02</div><div className="metric-bottom"><span>Awaiting confirmation</span><span className="metric-trend trend-amber">Demo state</span></div></Card>
+    </div>
+    <Card className="page-table-card"><div className="card-heading-row"><SectionHeading title="All transactions" detail="Issuer and bondholder activity log" /><div className="table-filter"><span>All activity</span><span>⌄</span></div></div><div className="table-scroll"><table className="data-table full-table"><thead><tr><th>Event</th><th>Bond</th><th>Signature</th><th>Timestamp</th><th>Amount</th><th>Status</th><th /></tr></thead><tbody>{transactions.map((transaction) => <tr key={transaction.signature}><td><div className="transaction-type"><span className="activity-icon activity-icon-0"><FileClock size={15} /></span><span><strong>{transaction.type}</strong><small>{transaction.description}</small></span></div></td><td>{transaction.bondTicker}</td><td><code className="wallet-code">{transaction.signature}</code></td><td>{formatDate(transaction.timestamp)} <small className="subtle-inline">{new Date(transaction.timestamp).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", timeZone: "UTC", timeZoneName: "short" })}</small></td><td>{transaction.amount && transaction.currency ? formatCurrency(transaction.amount, transaction.currency) : "—"}</td><td><StatusBadge tone={transaction.status === "Confirmed" ? "green" : transaction.status === "Pending" ? "amber" : "red"}>{transaction.status}</StatusBadge></td><td><button className="icon-button" aria-label={`Open ${transaction.signature}`}><ArrowUpRight size={15} /></button></td></tr>)}</tbody></table></div><div className="table-pagination"><span>Showing 4 of 128 demo events</span><div><button disabled>Previous</button><button>Next</button></div></div></Card>
+    <div className="inline-info"><ExternalLink size={17} /><span><strong>Explorer links are disabled in this scaffold.</strong> Signatures are shortened mock identifiers and cannot be resolved on Solana Explorer.</span><MockLabel /></div>
+  </>;
+}
+

@@ -1,0 +1,9 @@
+[workspace]
+members = ["programs/kase_treasury"]
+resolver = "2"
+
+[profile.release]
+overflow-checks = true
+
+[workspace.package]
+rust-version = "1.79"

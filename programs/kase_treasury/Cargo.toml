@@ -1,0 +1,18 @@
+[package]
+name = "kase_treasury"
+version = "0.1.0"
+edition = "2021"
+rust-version.workspace = true
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "kase_treasury"
+[features]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build"]
+cpi = ["no-entrypoint"]
+default = []
+[dependencies]
+anchor-lang = "=0.31.1"
+spl-token = { version = "=7.0.0", features = ["no-entrypoint"] }

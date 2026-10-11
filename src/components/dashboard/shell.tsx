@@ -3,8 +3,10 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
-import { Activity, ArrowDownUp, Bell, Blocks, ChevronDown, CircleHelp, Command, FileClock, Landmark, LayoutDashboard, Menu, Search, Settings2, ShieldCheck, Vote, Wallet, X } from "lucide-react";
+import { Activity, ArrowDownUp, Blocks, ChevronDown, CircleHelp, Command, FileClock, Landmark, LayoutDashboard, Menu, Search, Settings2, ShieldCheck, Vote, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { ConnectionControls, RuntimeSidebarStatus } from "./connection-controls";
+import { useRuntime } from "@/chain/runtime-context";
 
 const primaryLinks: { href: string; label: string; icon: LucideIcon; badge?: string }[] = [
   { href: "/", label: "Overview", icon: LayoutDashboard },
@@ -12,6 +14,7 @@ const primaryLinks: { href: string; label: string; icon: LucideIcon; badge?: str
   { href: "/actions", label: "Corporate actions", icon: ArrowDownUp },
   { href: "/governance", label: "Governance", icon: Vote, badge: "02" },
   { href: "/transactions", label: "Transactions", icon: FileClock },
+  { href: "/operations", label: "Operations", icon: Blocks },
 ];
 
 function BrandMark() {
@@ -20,6 +23,7 @@ function BrandMark() {
 
 export function DashboardShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const runtime = useRuntime();
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
@@ -33,7 +37,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
 
         <div className="workspace-switcher">
           <div className="workspace-avatar">A</div>
-          <div className="workspace-copy"><span>Workspace</span><strong>Atlas Capital</strong></div>
+          <div className="workspace-copy"><span>Workspace</span><strong>{runtime.mode === "demo" ? "Atlas Capital · sample" : "Live issuer account"}</strong></div>
           <ChevronDown size={15} />
         </div>
 
@@ -42,7 +46,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
           {primaryLinks.map(({ href, label, icon: Icon, badge }) => {
             const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
             return <Link key={href} href={href} onClick={() => setMenuOpen(false)} className={`nav-link ${active ? "active" : ""}`} aria-current={active ? "page" : undefined}>
-              <Icon size={17} strokeWidth={1.8} /><span>{label}</span>{badge && <small>{badge}</small>}
+              <Icon size={17} strokeWidth={1.8} /><span>{label}</span>{badge && runtime.mode === "demo" && <small>{badge}</small>}
             </Link>;
           })}
           <span className="nav-label nav-label-spaced">WORKSPACE</span>
@@ -51,10 +55,10 @@ export function DashboardShell({ children }: { children: ReactNode }) {
         </nav>
 
         <div className="sidebar-bottom">
-          <div className="network-card"><div className="network-heading"><span className="live-dot" />Solana Devnet<span className="network-tag">DEMO</span></div><p>Read-only preview · mock data</p></div>
+          <RuntimeSidebarStatus />
           <Link href="/transactions" className="nav-link"><CircleHelp size={17} strokeWidth={1.8} /><span>Documentation</span></Link>
           <Link href="/" className="nav-link"><Settings2 size={17} strokeWidth={1.8} /><span>Settings</span></Link>
-          <div className="profile-row"><div className="profile-avatar">AK</div><div className="profile-copy"><strong>Alex Kim</strong><span>Issuer admin</span></div><button className="icon-button" aria-label="Profile options"><ChevronDown size={15} /></button></div>
+          <div className="profile-row"><div className="profile-avatar">◎</div><div className="profile-copy"><strong>{runtime.mode === "demo" ? "Sample issuer" : "Connected wallet"}</strong><span>{runtime.mode === "demo" ? "Illustrative profile" : "Current signer"}</span></div></div>
         </div>
       </aside>
 
@@ -68,14 +72,12 @@ export function DashboardShell({ children }: { children: ReactNode }) {
           <div className="topbar-actions">
             <button className="search-trigger"><Search size={15} /><span>Search anything...</span><kbd><Command size={11} /> K</kbd></button>
             <div className="topbar-divider" />
-            <span className="cluster-pill"><span className="live-dot" />Devnet</span>
-            <button className="icon-button notification-button" aria-label="Notifications"><Bell size={17} /><i /></button>
-            <button className="wallet-button" disabled title="Wallet integration is planned for a later milestone"><Wallet size={15} /><span>Connect wallet</span></button>
+            <ConnectionControls />
           </div>
         </header>
-        <div className="prototype-notice"><ShieldCheck size={14} /><span><strong>Independent educational prototype</strong><span className="notice-separator">·</span>Not affiliated with or endorsed by KASE. All displayed data is mock data.</span><button aria-label="Dismiss notice">×</button></div>
+        <div className="prototype-notice"><ShieldCheck size={14} /><span><strong>Independent educational prototype</strong><span className="notice-separator">·</span>Not affiliated with or endorsed by KASE. {runtime.mode === "demo" ? "All sample figures are simulated." : "Live views show selected on-chain accounts; unintegrated views remain demo data."}</span></div>
         <div className="page-content">{children}</div>
-        <footer className="app-footer"><span>KASE Treasury <span className="footer-dot">·</span> Independent prototype</span><span>Built for learning on Solana Devnet</span></footer>
+        <footer className="app-footer"><span>KASE Treasury <span className="footer-dot">·</span> Independent prototype</span><span>{runtime.mode === "demo" ? "Simulated public demo" : "Selected Solana cluster"}</span></footer>
       </main>
     </div>
   );

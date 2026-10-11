@@ -1,0 +1,6026 @@
+{
+  "address": "7P3NaKZkqSKHYjTUF638mZifpWMeVq1qvfPNNjtVFjWZ",
+  "metadata": {
+    "name": "kase_treasury",
+    "version": "0.1.0",
+    "spec": "0.1.0"
+  },
+  "instructions": [
+    {
+      "name": "accept_issuer_authority",
+      "discriminator": [
+        68,
+        51,
+        39,
+        79,
+        55,
+        177,
+        220,
+        214
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  115,
+                  115,
+                  117,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config.id",
+                "account": "IssuerConfig"
+              }
+            ]
+          }
+        },
+        {
+          "name": "new_authority",
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "activate_redemption",
+      "discriminator": [
+        31,
+        42,
+        67,
+        191,
+        241,
+        126,
+        146,
+        128
+      ],
+      "accounts": [
+        {
+          "name": "redemption",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  100,
+                  101,
+                  109,
+                  112,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "bond"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bond",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  111,
+                  110,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "bond.config",
+                "account": "Bond"
+              },
+              {
+                "kind": "account",
+                "path": "bond.id",
+                "account": "Bond"
+              }
+            ]
+          },
+          "relations": [
+            "redemption",
+            "snapshot",
+            "registry"
+          ]
+        },
+        {
+          "name": "snapshot",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  110,
+                  97,
+                  112,
+                  115,
+                  104,
+                  111,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "bond"
+              },
+              {
+                "kind": "account",
+                "path": "snapshot.snapshot_id",
+                "account": "RecordDateSnapshot"
+              }
+            ]
+          }
+        },
+        {
+          "name": "registry",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  103,
+                  105,
+                  115,
+                  116,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "bond"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bond_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  111,
+                  110,
+                  100,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "bond"
+              }
+            ]
+          },
+          "relations": [
+            "bond"
+          ]
+        },
+        {
+          "name": "mint",
+          "writable": true,
+          "relations": [
+            "bond"
+          ]
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "relations": [
+            "bond"
+          ]
+        },
+        {
+          "name": "escrow",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "activator",
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "cast_vote",
+      "discriminator": [
+        20,
+        212,
+        15,
+        189,
+        69,
+        180,
+        69,
+        151
+      ],
+      "accounts": [
+        {
+          "name": "proposal",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  111,
+                  118,
+                  101,
+                  114,
+                  110,
+                  97,
+                  110,
+                  99,
+                  101,
+                  95,
+                  112,
+                  114,
+                  111,
+                  112,
+                  111,
+                  115,
+                  97,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "bond"
+              },
+              {
+                "kind": "account",
+                "path": "proposal.proposal_id",
+                "account": "Proposal"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bond",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  111,
+                  110,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "bond.config",
+                "account": "Bond"
+              },
+              {
+                "kind": "account",
+                "path": "bond.id",
+                "account": "Bond"
+              }
+            ]
+          },
+          "relations": [
+            "proposal",
+            "snapshot"
+          ]
+        },
+        {
+          "name": "snapshot",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  110,
+                  97,
+                  112,
+                  115,
+                  104,
+                  111,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "bond"
+              },
+              {
+                "kind": "account",
+                "path": "snapshot.snapshot_id",
+                "account": "RecordDateSnapshot"
+              }
+            ]
+          },
+          "relations": [
+            "proposal"
+          ]
+        },
+        {
+          "name": "holder",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "snapshot_entry",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  110,
+                  97,
+                  112,
+                  115,
+                  104,
+                  111,
+                  116,
+                  95,
+                  101,
+                  110,
+                  116,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "snapshot"
+              },
+              {
+                "kind": "account",
+                "path": "holder"
+              }
+            ]
+          }
+        },
+        {
+          "name": "receipt",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  111,
+                  116,
+                  101,
+                  95,
+                  114,
+                  101,
+                  99,
+                  101,
+                  105,
+                  112,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "proposal"
+              },
+              {
+                "kind": "account",
+                "path": "holder"
+              }
+            ]
+          }
+        },
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "choice",
+          "type": {
+            "defined": {
+              "name": "VoteChoice"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "claim_coupon",
+      "discriminator": [
+        210,
+        153,
+        241,
+        46,
+        195,
+        18,
+        161,
+        99
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  115,
+                  115,
+                  117,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config.id",
+                "account": "IssuerConfig"
+              }
+            ]
+          },
+          "relations": [
+            "bond",
+            "settlement_config"
+          ]
+        },
+        {
+          "name": "bond",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  111,
+                  110,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "bond.config",
+                "account": "Bond"
+              },
+              {
+                "kind": "account",
+                "path": "bond.id",
+                "account": "Bond"
+              }
+            ]
+          },
+          "relations": [
+            "coupon",
+            "snapshot"
+          ]
+        },
+        {
+          "name": "coupon",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  117,
+                  112,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "bond"
+              },
+              {
+                "kind": "account",
+                "path": "coupon.period_id",
+                "account": "CouponPeriod"
+              }
+            ]
+          }
+        },
+        {
+          "name": "snapshot",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  110,
+                  97,
+                  112,
+                  115,
+                  104,
+                  111,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "bond"
+              },
+              {
+                "kind": "account",
+                "path": "snapshot.snapshot_id",
+                "account": "RecordDateSnapshot"
+              }
+            ]
+          }
+        },
+        {
+          "name": "holder",
+          "signer": true
+        },
+        {
+          "name": "snapshot_entry",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  110,
+                  97,
+                  112,
+                  115,
+                  104,
+                  111,
+                  116,
+                  95,
+                  101,
+                  110,
+                  116,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "snapshot"
+              },
+              {
+                "kind": "account",
+                "path": "holder"
+              }
+            ]
+          }
+        },
+        {
+          "name": "settlement_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  116,
+                  116,
+                  108,
+                  101,
+                  109,
+                  101,
+                  110,
+                  116,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config"
+              }
+            ]
+          }
+        },
+        {
+          "name": "settlement_mint"
+        },
+        {
+          "name": "coupon_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  117,
+                  112,
+                  111,
+                  110,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "coupon"
+              }
+            ]
+          }
+        },
+        {
+          "name": "escrow",
+          "writable": true
+        },
+        {
+          "name": "destination",
+          "writable": true
+        },
+        {
+          "name": "claim_record",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  117,
+                  112,
+                  111,
+                  110,
+                  95,
+                  99,
+                  108,
+                  97,
+                  105,
+                  109
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "coupon"
+              },
+              {
+                "kind": "account",
+                "path": "holder"
+              }
+            ]
+          }
+        },
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "claim_redemption",
+      "discriminator": [
+        109,
+        110,
+        9,
+        188,
+        195,
+        217,
+        112,
+        83
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  115,
+                  115,
+                  117,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config.id",
+                "account": "IssuerConfig"
+              }
+            ]
+          },
+          "relations": [
+            "bond",
+            "settlement_config"
+          ]
+        },
+        {
+          "name": "bond",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  111,
+                  110,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "bond.config",
+                "account": "Bond"
+              },
+              {
+                "kind": "account",
+                "path": "bond.id",
+                "account": "Bond"
+              }
+            ]
+          },
+          "relations": [
+            "redemption",
+            "snapshot"
+          ]
+        },
+        {
+          "name": "redemption",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  100,
+                  101,
+                  109,
+                  112,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "bond"
+              }
+            ]
+          }
+        },
+        {
+          "name": "snapshot",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  110,
+                  97,
+                  112,
+                  115,
+                  104,
+                  111,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "bond"
+              },
+              {
+                "kind": "account",
+                "path": "snapshot.snapshot_id",
+                "account": "RecordDateSnapshot"
+              }
+            ]
+          }
+        },
+        {
+          "name": "holder",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "snapshot_entry",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  110,
+                  97,
+                  112,
+                  115,
+                  104,
+                  111,
+                  116,
+                  95,
+                  101,
+                  110,
+                  116,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "snapshot"
+              },
+              {
+                "kind": "account",
+                "path": "holder"
+              }
+            ]
+          }
+        },
+        {
+          "name": "settlement_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  116,
+                  116,
+                  108,
+                  101,
+                  109,
+                  101,
+                  110,
+                  116,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config"
+              }
+            ]
+          }
+        },
+        {
+          "name": "settlement_mint"
+        },
+        {
+          "name": "redemption_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  100,
+                  101,
+                  109,
+                  112,
+                  116,
+                  105,
+                  111,
+                  110,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "redemption"
+              }
+            ]
+          }
+        },
+        {
+          "name": "escrow",
+          "writable": true
+        },
+        {
+          "name": "destination",
+          "writable": true
+        },
+        {
+          "name": "receipt",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  100,
+                  101,
+                  109,
+                  112,
+                  116,
+                  105,
+                  111,
+                  110,
+                  95,
+                  99,
+                  108,
+                  97,
+                  105,
+                  109
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "redemption"
+              },
+              {
+                "kind": "account",
+                "path": "holder"
+              }
+            ]
+          }
+        },
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "rent",
+          "address": "SysvarRent111111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "close_issuance",
+      "discriminator": [
+        253,
+        218,
+        207,
+        226,
+        187,
+        229,
+        140,
+        231
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  115,
+                  115,
+                  117,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config.id",
+                "account": "IssuerConfig"
+              }
+            ]
+          },
+          "relations": [
+            "bond"
+          ]
+        },
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "bond",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  111,
+                  110,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config"
+              },
+              {
+                "kind": "account",
+                "path": "bond.id",
+                "account": "Bond"
+              }
+            ]
+          },
+          "relations": [
+            "registry"
+          ]
+        },
+        {
+          "name": "registry",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  103,
+                  105,
+                  115,
+                  116,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "bond"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bond_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  111,
+                  110,
+                  100,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "bond"
+              }
+            ]
+          },
+          "relations": [
+            "bond"
+          ]
+        },
+        {
+          "name": "mint",
+          "writable": true,
+          "relations": [
+            "bond"
+          ]
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "relations": [
+            "bond"
+          ]
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "configure_settlement_mint",
+      "discriminator": [
+        224,
+        238,
+        92,
+        71,
+        247,
+        244,
+        65,
+        14
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  115,
+                  115,
+                  117,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config.id",
+                "account": "IssuerConfig"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "settlement_config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  116,
+                  116,
+                  108,
+                  101,
+                  109,
+                  101,
+                  110,
+                  116,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config"
+              }
+            ]
+          }
+        },
+        {
+          "name": "settlement_mint"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "create_bond",
+      "discriminator": [
+        96,
+        81,
+        70,
+        166,
+        111,
+        33,
+        61,
+        50
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  115,
+                  115,
+                  117,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config.id",
+                "account": "IssuerConfig"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "bond",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  111,
+                  110,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config"
+              },
+              {
+                "kind": "arg",
+                "path": "id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bond_authority",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  111,
+                  110,
+                  100,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "bond"
+              }
+            ]
+          }
+        },
+        {
+          "name": "mint",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  111,
+                  110,
+                  100,
+                  95,
+                  109,
+                  105,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "bond"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  111,
+                  110,
+                  100,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "bond"
+              }
+            ]
+          }
+        },
+        {
+          "name": "registry",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  103,
+                  105,
+                  115,
+                  116,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "bond"
+              }
+            ]
+          }
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "rent",
+          "address": "SysvarRent111111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "id",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "face_value_base",
+          "type": "u64"
+        },
+        {
+          "name": "annual_coupon_bps",
+          "type": "u16"
+        },
+        {
+          "name": "frequency",
+          "type": {
+            "defined": {
+              "name": "CouponFrequency"
+            }
+          }
+        },
+        {
+          "name": "maturity_ts",
+          "type": "i64"
+        },
+        {
+          "name": "supply_cap",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "create_coupon_period",
+      "discriminator": [
+        200,
+        4,
+        219,
+        125,
+        249,
+        113,
+        120,
+        244
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  115,
+                  115,
+                  117,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config.id",
+                "account": "IssuerConfig"
+              }
+            ]
+          },
+          "relations": [
+            "bond",
+            "settlement_config"
+          ]
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "bond",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  111,
+                  110,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config"
+              },
+              {
+                "kind": "account",
+                "path": "bond.id",
+                "account": "Bond"
+              }
+            ]
+          },
+          "relations": [
+            "snapshot"
+          ]
+        },
+        {
+          "name": "snapshot",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  110,
+                  97,
+                  112,
+                  115,
+                  104,
+                  111,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "bond"
+              },
+              {
+                "kind": "account",
+                "path": "snapshot.snapshot_id",
+                "account": "RecordDateSnapshot"
+              }
+            ]
+          }
+        },
+        {
+          "name": "settlement_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  116,
+                  116,
+                  108,
+                  101,
+                  109,
+                  101,
+                  110,
+                  116,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config"
+              }
+            ]
+          }
+        },
+        {
+          "name": "settlement_mint"
+        },
+        {
+          "name": "coupon",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  117,
+                  112,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "bond"
+              },
+              {
+                "kind": "arg",
+                "path": "period_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "coupon_authority",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  117,
+                  112,
+                  111,
+                  110,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "coupon"
+              }
+            ]
+          }
+        },
+        {
+          "name": "escrow",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  117,
+                  112,
+                  111,
+                  110,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "coupon"
+              }
+            ]
+          }
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "rent",
+          "address": "SysvarRent111111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "period_id",
+          "type": "u64"
+        },
+        {
+          "name": "record_date_ts",
+          "type": "i64"
+        },
+        {
+          "name": "payment_date_ts",
+          "type": "i64"
+        }
+      ]
+    },
+    {
+      "name": "create_proposal",
+      "discriminator": [
+        132,
+        116,
+        68,
+        174,
+        216,
+        160,
+        198,
+        22
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  115,
+                  115,
+                  117,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config.id",
+                "account": "IssuerConfig"
+              }
+            ]
+          },
+          "relations": [
+            "bond"
+          ]
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "bond",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  111,
+                  110,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config"
+              },
+              {
+                "kind": "account",
+                "path": "bond.id",
+                "account": "Bond"
+              }
+            ]
+          },
+          "relations": [
+            "snapshot"
+          ]
+        },
+        {
+          "name": "snapshot",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  110,
+                  97,
+                  112,
+                  115,
+                  104,
+                  111,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "bond"
+              },
+              {
+                "kind": "account",
+                "path": "snapshot.snapshot_id",
+                "account": "RecordDateSnapshot"
+              }
+            ]
+          }
+        },
+        {
+          "name": "proposal",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  111,
+                  118,
+                  101,
+                  114,
+                  110,
+                  97,
+                  110,
+                  99,
+                  101,
+                  95,
+                  112,
+                  114,
+                  111,
+                  112,
+                  111,
+                  115,
+                  97,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "bond"
+              },
+              {
+                "kind": "arg",
+                "path": "proposal_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "proposal_id",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "title",
+          "type": "string"
+        },
+        {
+          "name": "content_hash",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "voting_start_ts",
+          "type": "i64"
+        },
+        {
+          "name": "voting_end_ts",
+          "type": "i64"
+        },
+        {
+          "name": "quorum_bps",
+          "type": "u16"
+        },
+        {
+          "name": "approval_bps",
+          "type": "u16"
+        }
+      ]
+    },
+    {
+      "name": "create_redemption",
+      "discriminator": [
+        142,
+        217,
+        144,
+        66,
+        200,
+        61,
+        157,
+        30
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  115,
+                  115,
+                  117,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config.id",
+                "account": "IssuerConfig"
+              }
+            ]
+          },
+          "relations": [
+            "bond",
+            "settlement_config"
+          ]
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "bond",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  111,
+                  110,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config"
+              },
+              {
+                "kind": "account",
+                "path": "bond.id",
+                "account": "Bond"
+              }
+            ]
+          },
+          "relations": [
+            "registry",
+            "snapshot"
+          ]
+        },
+        {
+          "name": "registry",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  103,
+                  105,
+                  115,
+                  116,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "bond"
+              }
+            ]
+          }
+        },
+        {
+          "name": "snapshot",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  110,
+                  97,
+                  112,
+                  115,
+                  104,
+                  111,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "bond"
+              },
+              {
+                "kind": "account",
+                "path": "snapshot.snapshot_id",
+                "account": "RecordDateSnapshot"
+              }
+            ]
+          }
+        },
+        {
+          "name": "settlement_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  116,
+                  116,
+                  108,
+                  101,
+                  109,
+                  101,
+                  110,
+                  116,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config"
+              }
+            ]
+          }
+        },
+        {
+          "name": "settlement_mint"
+        },
+        {
+          "name": "redemption",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  100,
+                  101,
+                  109,
+                  112,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "bond"
+              }
+            ]
+          }
+        },
+        {
+          "name": "redemption_authority",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  100,
+                  101,
+                  109,
+                  112,
+                  116,
+                  105,
+                  111,
+                  110,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "redemption"
+              }
+            ]
+          }
+        },
+        {
+          "name": "escrow",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  100,
+                  101,
+                  109,
+                  112,
+                  116,
+                  105,
+                  111,
+                  110,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "redemption"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bond_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  111,
+                  110,
+                  100,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "bond"
+              }
+            ]
+          },
+          "relations": [
+            "bond"
+          ]
+        },
+        {
+          "name": "mint",
+          "relations": [
+            "bond"
+          ]
+        },
+        {
+          "name": "vault",
+          "relations": [
+            "bond"
+          ]
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "rent",
+          "address": "SysvarRent111111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "create_snapshot",
+      "discriminator": [
+        63,
+        212,
+        3,
+        100,
+        190,
+        182,
+        203,
+        130
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  115,
+                  115,
+                  117,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config.id",
+                "account": "IssuerConfig"
+              }
+            ]
+          },
+          "relations": [
+            "bond"
+          ]
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "bond",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  111,
+                  110,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config"
+              },
+              {
+                "kind": "account",
+                "path": "bond.id",
+                "account": "Bond"
+              }
+            ]
+          },
+          "relations": [
+            "registry"
+          ]
+        },
+        {
+          "name": "registry",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  103,
+                  105,
+                  115,
+                  116,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "bond"
+              }
+            ]
+          }
+        },
+        {
+          "name": "snapshot",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  110,
+                  97,
+                  112,
+                  115,
+                  104,
+                  111,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "bond"
+              },
+              {
+                "kind": "arg",
+                "path": "snapshot_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bond_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  111,
+                  110,
+                  100,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "bond"
+              }
+            ]
+          },
+          "relations": [
+            "bond"
+          ]
+        },
+        {
+          "name": "mint",
+          "relations": [
+            "bond"
+          ]
+        },
+        {
+          "name": "vault",
+          "relations": [
+            "bond"
+          ]
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "rent",
+          "address": "SysvarRent111111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "snapshot_id",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "record_date_ts",
+          "type": "i64"
+        }
+      ]
+    },
+    {
+      "name": "finalize_proposal",
+      "discriminator": [
+        23,
+        68,
+        51,
+        167,
+        109,
+        173,
+        187,
+        164
+      ],
+      "accounts": [
+        {
+          "name": "proposal",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  111,
+                  118,
+                  101,
+                  114,
+                  110,
+                  97,
+                  110,
+                  99,
+                  101,
+                  95,
+                  112,
+                  114,
+                  111,
+                  112,
+                  111,
+                  115,
+                  97,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "bond"
+              },
+              {
+                "kind": "account",
+                "path": "proposal.proposal_id",
+                "account": "Proposal"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bond",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  111,
+                  110,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "bond.config",
+                "account": "Bond"
+              },
+              {
+                "kind": "account",
+                "path": "bond.id",
+                "account": "Bond"
+              }
+            ]
+          },
+          "relations": [
+            "proposal",
+            "snapshot"
+          ]
+        },
+        {
+          "name": "snapshot",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  110,
+                  97,
+                  112,
+                  115,
+                  104,
+                  111,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "bond"
+              },
+              {
+                "kind": "account",
+                "path": "snapshot.snapshot_id",
+                "account": "RecordDateSnapshot"
+              }
+            ]
+          },
+          "relations": [
+            "proposal"
+          ]
+        },
+        {
+          "name": "finalizer",
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "finalize_snapshot",
+      "discriminator": [
+        164,
+        5,
+        101,
+        146,
+        139,
+        235,
+        67,
+        48
+      ],
+      "accounts": [
+        {
+          "name": "snapshot",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  110,
+                  97,
+                  112,
+                  115,
+                  104,
+                  111,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "bond"
+              },
+              {
+                "kind": "account",
+                "path": "snapshot.snapshot_id",
+                "account": "RecordDateSnapshot"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bond",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  111,
+                  110,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "bond.config",
+                "account": "Bond"
+              },
+              {
+                "kind": "account",
+                "path": "bond.id",
+                "account": "Bond"
+              }
+            ]
+          },
+          "relations": [
+            "snapshot",
+            "registry"
+          ]
+        },
+        {
+          "name": "registry",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  103,
+                  105,
+                  115,
+                  116,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "bond"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bond_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  111,
+                  110,
+                  100,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "bond"
+              }
+            ]
+          },
+          "relations": [
+            "bond"
+          ]
+        },
+        {
+          "name": "mint",
+          "relations": [
+            "bond"
+          ]
+        },
+        {
+          "name": "vault",
+          "relations": [
+            "bond"
+          ]
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "finalizer",
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "fund_coupon_period",
+      "discriminator": [
+        89,
+        145,
+        14,
+        112,
+        184,
+        230,
+        199,
+        22
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  115,
+                  115,
+                  117,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config.id",
+                "account": "IssuerConfig"
+              }
+            ]
+          },
+          "relations": [
+            "bond",
+            "settlement_config"
+          ]
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "bond",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  111,
+                  110,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "bond.config",
+                "account": "Bond"
+              },
+              {
+                "kind": "account",
+                "path": "bond.id",
+                "account": "Bond"
+              }
+            ]
+          },
+          "relations": [
+            "coupon"
+          ]
+        },
+        {
+          "name": "coupon",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  117,
+                  112,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "bond"
+              },
+              {
+                "kind": "account",
+                "path": "coupon.period_id",
+                "account": "CouponPeriod"
+              }
+            ]
+          }
+        },
+        {
+          "name": "settlement_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  116,
+                  116,
+                  108,
+                  101,
+                  109,
+                  101,
+                  110,
+                  116,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config"
+              }
+            ]
+          }
+        },
+        {
+          "name": "settlement_mint"
+        },
+        {
+          "name": "source",
+          "writable": true
+        },
+        {
+          "name": "escrow",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "fund_redemption",
+      "discriminator": [
+        63,
+        242,
+        144,
+        13,
+        107,
+        199,
+        16,
+        159
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  115,
+                  115,
+                  117,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config.id",
+                "account": "IssuerConfig"
+              }
+            ]
+          },
+          "relations": [
+            "bond",
+            "settlement_config"
+          ]
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "bond",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  111,
+                  110,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "bond.config",
+                "account": "Bond"
+              },
+              {
+                "kind": "account",
+                "path": "bond.id",
+                "account": "Bond"
+              }
+            ]
+          },
+          "relations": [
+            "redemption"
+          ]
+        },
+        {
+          "name": "redemption",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  100,
+                  101,
+                  109,
+                  112,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "bond"
+              }
+            ]
+          }
+        },
+        {
+          "name": "settlement_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  116,
+                  116,
+                  108,
+                  101,
+                  109,
+                  101,
+                  110,
+                  116,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config"
+              }
+            ]
+          }
+        },
+        {
+          "name": "settlement_mint"
+        },
+        {
+          "name": "source",
+          "writable": true
+        },
+        {
+          "name": "escrow",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "initialize_issuer",
+      "discriminator": [
+        231,
+        164,
+        134,
+        90,
+        62,
+        217,
+        189,
+        118
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  115,
+                  115,
+                  117,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "id",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "issue_units",
+      "discriminator": [
+        39,
+        120,
+        190,
+        191,
+        225,
+        131,
+        155,
+        248
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  115,
+                  115,
+                  117,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config.id",
+                "account": "IssuerConfig"
+              }
+            ]
+          },
+          "relations": [
+            "bond"
+          ]
+        },
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "bond",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  111,
+                  110,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config"
+              },
+              {
+                "kind": "account",
+                "path": "bond.id",
+                "account": "Bond"
+              }
+            ]
+          },
+          "relations": [
+            "registry",
+            "position"
+          ]
+        },
+        {
+          "name": "registry",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  103,
+                  105,
+                  115,
+                  116,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "bond"
+              }
+            ]
+          }
+        },
+        {
+          "name": "position",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "bond"
+              },
+              {
+                "kind": "account",
+                "path": "position.holder",
+                "account": "Position"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bond_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  111,
+                  110,
+                  100,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "bond"
+              }
+            ]
+          },
+          "relations": [
+            "bond"
+          ]
+        },
+        {
+          "name": "mint",
+          "writable": true,
+          "relations": [
+            "bond"
+          ]
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "relations": [
+            "bond"
+          ]
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "process_snapshot_batch",
+      "discriminator": [
+        205,
+        141,
+        245,
+        230,
+        22,
+        7,
+        191,
+        172
+      ],
+      "accounts": [
+        {
+          "name": "snapshot",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  110,
+                  97,
+                  112,
+                  115,
+                  104,
+                  111,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "bond"
+              },
+              {
+                "kind": "account",
+                "path": "snapshot.snapshot_id",
+                "account": "RecordDateSnapshot"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bond",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  111,
+                  110,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "bond.config",
+                "account": "Bond"
+              },
+              {
+                "kind": "account",
+                "path": "bond.id",
+                "account": "Bond"
+              }
+            ]
+          },
+          "relations": [
+            "snapshot",
+            "registry"
+          ]
+        },
+        {
+          "name": "registry",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  103,
+                  105,
+                  115,
+                  116,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "bond"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bond_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  111,
+                  110,
+                  100,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "bond"
+              }
+            ]
+          },
+          "relations": [
+            "bond"
+          ]
+        },
+        {
+          "name": "mint",
+          "relations": [
+            "bond"
+          ]
+        },
+        {
+          "name": "vault",
+          "relations": [
+            "bond"
+          ]
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "cranker",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "start_index",
+          "type": "u8"
+        },
+        {
+          "name": "batch_size",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "propose_issuer_authority",
+      "discriminator": [
+        39,
+        132,
+        136,
+        42,
+        232,
+        76,
+        223,
+        142
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  115,
+                  115,
+                  117,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config.id",
+                "account": "IssuerConfig"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "new_authority",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "register_holder",
+      "discriminator": [
+        113,
+        111,
+        117,
+        246,
+        175,
+        59,
+        98,
+        161
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  115,
+                  115,
+                  117,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config.id",
+                "account": "IssuerConfig"
+              }
+            ]
+          },
+          "relations": [
+            "bond"
+          ]
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "bond",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  111,
+                  110,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config"
+              },
+              {
+                "kind": "account",
+                "path": "bond.id",
+                "account": "Bond"
+              }
+            ]
+          },
+          "relations": [
+            "registry"
+          ]
+        },
+        {
+          "name": "registry",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  103,
+                  105,
+                  115,
+                  116,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "bond"
+              }
+            ]
+          }
+        },
+        {
+          "name": "registry_entry",
+          "writable": true
+        },
+        {
+          "name": "position",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "bond"
+              },
+              {
+                "kind": "account",
+                "path": "holder"
+              }
+            ]
+          }
+        },
+        {
+          "name": "holder",
+          "signer": true
+        },
+        {
+          "name": "bond_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  111,
+                  110,
+                  100,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "bond"
+              }
+            ]
+          },
+          "relations": [
+            "bond"
+          ]
+        },
+        {
+          "name": "mint",
+          "writable": true,
+          "relations": [
+            "bond"
+          ]
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "relations": [
+            "bond"
+          ]
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Bond",
+      "discriminator": [
+        224,
+        128,
+        48,
+        251,
+        182,
+        246,
+        111,
+        196
+      ]
+    },
+    {
+      "name": "BondAuthority",
+      "discriminator": [
+        18,
+        33,
+        161,
+        27,
+        128,
+        155,
+        149,
+        208
+      ]
+    },
+    {
+      "name": "ClaimRecord",
+      "discriminator": [
+        57,
+        229,
+        0,
+        9,
+        65,
+        62,
+        96,
+        7
+      ]
+    },
+    {
+      "name": "CouponAuthority",
+      "discriminator": [
+        146,
+        251,
+        213,
+        165,
+        191,
+        37,
+        234,
+        244
+      ]
+    },
+    {
+      "name": "CouponPeriod",
+      "discriminator": [
+        251,
+        40,
+        187,
+        164,
+        206,
+        140,
+        1,
+        105
+      ]
+    },
+    {
+      "name": "IssuerConfig",
+      "discriminator": [
+        238,
+        244,
+        71,
+        221,
+        254,
+        169,
+        247,
+        237
+      ]
+    },
+    {
+      "name": "Position",
+      "discriminator": [
+        170,
+        188,
+        143,
+        228,
+        122,
+        64,
+        247,
+        208
+      ]
+    },
+    {
+      "name": "Proposal",
+      "discriminator": [
+        26,
+        94,
+        189,
+        187,
+        116,
+        136,
+        53,
+        33
+      ]
+    },
+    {
+      "name": "RecordDateSnapshot",
+      "discriminator": [
+        159,
+        46,
+        49,
+        211,
+        237,
+        40,
+        253,
+        255
+      ]
+    },
+    {
+      "name": "Redemption",
+      "discriminator": [
+        112,
+        75,
+        232,
+        189,
+        22,
+        114,
+        156,
+        203
+      ]
+    },
+    {
+      "name": "RedemptionAuthority",
+      "discriminator": [
+        153,
+        42,
+        231,
+        135,
+        95,
+        127,
+        83,
+        251
+      ]
+    },
+    {
+      "name": "RedemptionReceipt",
+      "discriminator": [
+        220,
+        43,
+        221,
+        166,
+        174,
+        69,
+        111,
+        26
+      ]
+    },
+    {
+      "name": "RegistryEntry",
+      "discriminator": [
+        48,
+        198,
+        240,
+        252,
+        155,
+        186,
+        72,
+        16
+      ]
+    },
+    {
+      "name": "RegistryState",
+      "discriminator": [
+        29,
+        34,
+        224,
+        195,
+        175,
+        183,
+        99,
+        97
+      ]
+    },
+    {
+      "name": "SettlementConfig",
+      "discriminator": [
+        205,
+        26,
+        40,
+        112,
+        76,
+        134,
+        3,
+        14
+      ]
+    },
+    {
+      "name": "SnapshotEntry",
+      "discriminator": [
+        157,
+        11,
+        94,
+        32,
+        220,
+        197,
+        73,
+        87
+      ]
+    },
+    {
+      "name": "VoteReceipt",
+      "discriminator": [
+        104,
+        20,
+        204,
+        252,
+        45,
+        84,
+        37,
+        195
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "AuthorityAccepted",
+      "discriminator": [
+        166,
+        192,
+        219,
+        188,
+        41,
+        209,
+        195,
+        26
+      ]
+    },
+    {
+      "name": "AuthorityProposed",
+      "discriminator": [
+        244,
+        117,
+        94,
+        112,
+        53,
+        151,
+        35,
+        89
+      ]
+    },
+    {
+      "name": "BondCreated",
+      "discriminator": [
+        75,
+        123,
+        213,
+        125,
+        66,
+        232,
+        46,
+        147
+      ]
+    },
+    {
+      "name": "CouponClaimed",
+      "discriminator": [
+        37,
+        168,
+        115,
+        183,
+        112,
+        176,
+        208,
+        244
+      ]
+    },
+    {
+      "name": "CouponPeriodCreated",
+      "discriminator": [
+        245,
+        230,
+        169,
+        99,
+        192,
+        193,
+        51,
+        8
+      ]
+    },
+    {
+      "name": "CouponPeriodFunded",
+      "discriminator": [
+        207,
+        6,
+        234,
+        162,
+        135,
+        253,
+        224,
+        210
+      ]
+    },
+    {
+      "name": "IssuanceClosed",
+      "discriminator": [
+        201,
+        37,
+        48,
+        106,
+        168,
+        8,
+        118,
+        96
+      ]
+    },
+    {
+      "name": "IssuerInitialized",
+      "discriminator": [
+        130,
+        46,
+        97,
+        66,
+        58,
+        159,
+        113,
+        106
+      ]
+    },
+    {
+      "name": "PositionIssued",
+      "discriminator": [
+        209,
+        157,
+        125,
+        103,
+        51,
+        213,
+        80,
+        72
+      ]
+    },
+    {
+      "name": "ProposalCreated",
+      "discriminator": [
+        186,
+        8,
+        160,
+        108,
+        81,
+        13,
+        51,
+        206
+      ]
+    },
+    {
+      "name": "ProposalFinalized",
+      "discriminator": [
+        159,
+        104,
+        210,
+        220,
+        86,
+        209,
+        61,
+        51
+      ]
+    },
+    {
+      "name": "RedemptionActivated",
+      "discriminator": [
+        4,
+        129,
+        235,
+        118,
+        40,
+        16,
+        80,
+        235
+      ]
+    },
+    {
+      "name": "RedemptionClaimed",
+      "discriminator": [
+        107,
+        251,
+        199,
+        213,
+        59,
+        173,
+        53,
+        189
+      ]
+    },
+    {
+      "name": "RedemptionCreated",
+      "discriminator": [
+        19,
+        18,
+        62,
+        60,
+        141,
+        70,
+        169,
+        111
+      ]
+    },
+    {
+      "name": "RedemptionFunded",
+      "discriminator": [
+        146,
+        26,
+        237,
+        133,
+        155,
+        44,
+        150,
+        215
+      ]
+    },
+    {
+      "name": "SettlementMintConfigured",
+      "discriminator": [
+        133,
+        76,
+        186,
+        39,
+        127,
+        253,
+        100,
+        188
+      ]
+    },
+    {
+      "name": "SnapshotBatchProcessed",
+      "discriminator": [
+        50,
+        156,
+        234,
+        210,
+        25,
+        190,
+        159,
+        185
+      ]
+    },
+    {
+      "name": "SnapshotCreated",
+      "discriminator": [
+        252,
+        52,
+        172,
+        62,
+        191,
+        103,
+        75,
+        76
+      ]
+    },
+    {
+      "name": "SnapshotEntryRecorded",
+      "discriminator": [
+        64,
+        246,
+        210,
+        105,
+        2,
+        242,
+        62,
+        157
+      ]
+    },
+    {
+      "name": "SnapshotFinalized",
+      "discriminator": [
+        17,
+        215,
+        152,
+        185,
+        112,
+        229,
+        188,
+        101
+      ]
+    },
+    {
+      "name": "VoteCast",
+      "discriminator": [
+        39,
+        53,
+        195,
+        104,
+        188,
+        17,
+        225,
+        213
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "InvalidId",
+      "msg": "Identifier cannot be zero."
+    },
+    {
+      "code": 6001,
+      "name": "InvalidAuthority",
+      "msg": "Authority is invalid."
+    },
+    {
+      "code": 6002,
+      "name": "AuthorityUnchanged",
+      "msg": "Authority is already current."
+    },
+    {
+      "code": 6003,
+      "name": "NotPendingAuthority",
+      "msg": "Only pending authority may accept the transfer."
+    },
+    {
+      "code": 6004,
+      "name": "InvalidTerms",
+      "msg": "Bond terms are outside supported bounds."
+    },
+    {
+      "code": 6005,
+      "name": "InvalidMaturity",
+      "msg": "Maturity must be in the future."
+    },
+    {
+      "code": 6006,
+      "name": "InvalidSupplyCap",
+      "msg": "Supply cap must be positive."
+    },
+    {
+      "code": 6007,
+      "name": "ZeroAmount",
+      "msg": "Amount must be positive."
+    },
+    {
+      "code": 6008,
+      "name": "IssuanceClosed",
+      "msg": "Issuance is closed."
+    },
+    {
+      "code": 6009,
+      "name": "BondMatured",
+      "msg": "Bond has matured."
+    },
+    {
+      "code": 6010,
+      "name": "RegistryFull",
+      "msg": "Registry capacity reached."
+    },
+    {
+      "code": 6011,
+      "name": "DuplicateHolder",
+      "msg": "Holder is already registered."
+    },
+    {
+      "code": 6012,
+      "name": "UnregisteredHolder",
+      "msg": "Holder is not registered."
+    },
+    {
+      "code": 6013,
+      "name": "SupplyCap",
+      "msg": "Supply cap would be exceeded."
+    },
+    {
+      "code": 6014,
+      "name": "Overflow",
+      "msg": "Arithmetic overflow."
+    },
+    {
+      "code": 6015,
+      "name": "InvalidMint",
+      "msg": "Bond mint is not a valid classic SPL mint with expected authority/decimals."
+    },
+    {
+      "code": 6016,
+      "name": "InvalidVault",
+      "msg": "Bond vault is not a valid classic SPL token account with expected mint/authority."
+    },
+    {
+      "code": 6017,
+      "name": "SupplyMismatch",
+      "msg": "Token mint supply mismatch."
+    },
+    {
+      "code": 6018,
+      "name": "VaultMismatch",
+      "msg": "Custody vault balance mismatch."
+    },
+    {
+      "code": 6019,
+      "name": "WrongAuthority",
+      "msg": "Bond authority PDA mismatch."
+    },
+    {
+      "code": 6020,
+      "name": "WrongPositionOwner",
+      "msg": "Position account has wrong owner."
+    },
+    {
+      "code": 6021,
+      "name": "WrongPositionPda",
+      "msg": "Position PDA is invalid."
+    },
+    {
+      "code": 6022,
+      "name": "PositionCountMismatch",
+      "msg": "Position count does not match registry."
+    },
+    {
+      "code": 6023,
+      "name": "PositionTotalMismatch",
+      "msg": "Position sum does not match recorded supply."
+    },
+    {
+      "code": 6024,
+      "name": "EmptyIssuance",
+      "msg": "Cannot close an empty issuance."
+    },
+    {
+      "code": 6025,
+      "name": "InvalidSnapshotId",
+      "msg": "Snapshot identifier cannot be zero."
+    },
+    {
+      "code": 6026,
+      "name": "IssuanceNotClosed",
+      "msg": "A snapshot requires a closed, immutable issuance."
+    },
+    {
+      "code": 6027,
+      "name": "RetroactiveSnapshot",
+      "msg": "Record date cannot be in the past when snapshot is created."
+    },
+    {
+      "code": 6028,
+      "name": "EmptySnapshot",
+      "msg": "Snapshot requires at least one registered holder and one bond unit."
+    },
+    {
+      "code": 6029,
+      "name": "SnapshotNotDue",
+      "msg": "Snapshot record date has not arrived."
+    },
+    {
+      "code": 6030,
+      "name": "SnapshotFinalized",
+      "msg": "Snapshot has already been finalized."
+    },
+    {
+      "code": 6031,
+      "name": "InvalidSnapshotBatch",
+      "msg": "Snapshot batch size is zero, too large, or has an incorrect account list."
+    },
+    {
+      "code": 6032,
+      "name": "SnapshotIndexMismatch",
+      "msg": "Snapshot batch start index is not the next required registry index."
+    },
+    {
+      "code": 6033,
+      "name": "InvalidRegistryEntry",
+      "msg": "Registry entry account is invalid for this bond and index."
+    },
+    {
+      "code": 6034,
+      "name": "InvalidPosition",
+      "msg": "Position account is invalid for the registry holder."
+    },
+    {
+      "code": 6035,
+      "name": "InvalidSnapshotEntry",
+      "msg": "Snapshot entry PDA or account is invalid."
+    },
+    {
+      "code": 6036,
+      "name": "DuplicateSnapshotEntry",
+      "msg": "A snapshot entry already exists for this holder."
+    },
+    {
+      "code": 6037,
+      "name": "SnapshotCountMismatch",
+      "msg": "Snapshot holder count does not match the registry."
+    },
+    {
+      "code": 6038,
+      "name": "SnapshotTotalMismatch",
+      "msg": "Snapshot total does not match the frozen registry supply."
+    },
+    {
+      "code": 6039,
+      "name": "SnapshotIncomplete",
+      "msg": "Snapshot cannot be finalized before every holder has been processed."
+    },
+    {
+      "code": 6040,
+      "name": "InvalidTransition",
+      "msg": "Lifecycle transition is invalid or repeated."
+    },
+    {
+      "code": 6041,
+      "name": "SnapshotNotFinalized",
+      "msg": "Snapshot must be finalized."
+    },
+    {
+      "code": 6042,
+      "name": "WrongSnapshot",
+      "msg": "Coupon references a different snapshot."
+    },
+    {
+      "code": 6043,
+      "name": "InvalidPaymentDate",
+      "msg": "Payment date must be on or after record date and current chain time."
+    },
+    {
+      "code": 6044,
+      "name": "InvalidSettlementMint",
+      "msg": "Settlement mint must be classic SPL with six decimals."
+    },
+    {
+      "code": 6045,
+      "name": "ZeroCoupon",
+      "msg": "Coupon rounds to zero settlement base units."
+    },
+    {
+      "code": 6046,
+      "name": "FundingAmountMismatch",
+      "msg": "Funding must exactly equal the coupon reserve."
+    },
+    {
+      "code": 6047,
+      "name": "CouponNotFunded",
+      "msg": "Coupon is not fully funded."
+    },
+    {
+      "code": 6048,
+      "name": "PaymentNotDue",
+      "msg": "Coupon payment date has not arrived."
+    },
+    {
+      "code": 6049,
+      "name": "WrongBond",
+      "msg": "Bond account does not match coupon."
+    },
+    {
+      "code": 6050,
+      "name": "IneligibleHolder",
+      "msg": "Snapshot entry does not establish holder eligibility."
+    },
+    {
+      "code": 6051,
+      "name": "InvalidSettlementAccount",
+      "msg": "Settlement source token account is invalid."
+    },
+    {
+      "code": 6052,
+      "name": "InvalidDestination",
+      "msg": "Destination must be a token account owned by the holder."
+    },
+    {
+      "code": 6053,
+      "name": "InsufficientReserve",
+      "msg": "Coupon or principal reserve is insufficient."
+    },
+    {
+      "code": 6054,
+      "name": "BondNotMatured",
+      "msg": "Bond maturity has not arrived."
+    },
+    {
+      "code": 6055,
+      "name": "RedemptionNotFunded",
+      "msg": "Bond principal redemption is not fully funded."
+    },
+    {
+      "code": 6056,
+      "name": "RedemptionNotActive",
+      "msg": "Redemption has not been activated."
+    },
+    {
+      "code": 6057,
+      "name": "InvalidProposalId",
+      "msg": "Proposal identifier cannot be zero."
+    },
+    {
+      "code": 6058,
+      "name": "InvalidProposalContent",
+      "msg": "Proposal content hash cannot be zero."
+    },
+    {
+      "code": 6059,
+      "name": "InvalidProposalTitle",
+      "msg": "Proposal title is empty or exceeds its byte limit."
+    },
+    {
+      "code": 6060,
+      "name": "InvalidVotingWindow",
+      "msg": "Voting window is invalid, retroactive, or longer than the supported maximum."
+    },
+    {
+      "code": 6061,
+      "name": "InvalidGovernanceThreshold",
+      "msg": "Quorum or approval threshold is outside 0-10000 basis points."
+    },
+    {
+      "code": 6062,
+      "name": "BondRedeemed",
+      "msg": "Bond has entered terminal redemption state."
+    },
+    {
+      "code": 6063,
+      "name": "ProposalNotOpen",
+      "msg": "Proposal is not open."
+    },
+    {
+      "code": 6064,
+      "name": "VotingNotStarted",
+      "msg": "Voting has not started."
+    },
+    {
+      "code": 6065,
+      "name": "VotingEnded",
+      "msg": "Voting window has ended."
+    },
+    {
+      "code": 6066,
+      "name": "VotingNotEnded",
+      "msg": "Voting window has not ended."
+    },
+    {
+      "code": 6067,
+      "name": "IneligibleVoter",
+      "msg": "Voter is not eligible in the proposal snapshot."
+    },
+    {
+      "code": 6068,
+      "name": "GovernanceAccountingMismatch",
+      "msg": "Governance vote totals do not reconcile with snapshot power."
+    }
+  ],
+  "types": [
+    {
+      "name": "AuthorityAccepted",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "config",
+            "type": "pubkey"
+          },
+          {
+            "name": "old",
+            "type": "pubkey"
+          },
+          {
+            "name": "new",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "AuthorityProposed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "config",
+            "type": "pubkey"
+          },
+          {
+            "name": "proposed",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Bond",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "config",
+            "type": "pubkey"
+          },
+          {
+            "name": "id",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "bond_authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "face_value_base",
+            "type": "u64"
+          },
+          {
+            "name": "annual_coupon_bps",
+            "type": "u16"
+          },
+          {
+            "name": "frequency",
+            "type": {
+              "defined": {
+                "name": "CouponFrequency"
+              }
+            }
+          },
+          {
+            "name": "maturity_ts",
+            "type": "i64"
+          },
+          {
+            "name": "supply_cap",
+            "type": "u64"
+          },
+          {
+            "name": "issued",
+            "type": "u64"
+          },
+          {
+            "name": "outstanding",
+            "type": "u64"
+          },
+          {
+            "name": "status",
+            "type": {
+              "defined": {
+                "name": "Status"
+              }
+            }
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "authority_bump",
+            "type": "u8"
+          },
+          {
+            "name": "registry_bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "BondAuthority",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "bond",
+            "type": "pubkey"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "BondCreated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "bond",
+            "type": "pubkey"
+          },
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "supply_cap",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ClaimRecord",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "coupon",
+            "type": "pubkey"
+          },
+          {
+            "name": "holder",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount_base",
+            "type": "u64"
+          },
+          {
+            "name": "paid_at_ts",
+            "type": "i64"
+          },
+          {
+            "name": "paid_slot",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CouponAuthority",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "coupon",
+            "type": "pubkey"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CouponClaimed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "coupon",
+            "type": "pubkey"
+          },
+          {
+            "name": "holder",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount_base",
+            "type": "u64"
+          },
+          {
+            "name": "paid_total_base",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CouponFrequency",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Semiannual"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CouponPeriod",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "bond",
+            "type": "pubkey"
+          },
+          {
+            "name": "snapshot",
+            "type": "pubkey"
+          },
+          {
+            "name": "settlement_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "escrow",
+            "type": "pubkey"
+          },
+          {
+            "name": "coupon_authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "issuer",
+            "type": "pubkey"
+          },
+          {
+            "name": "period_id",
+            "type": "u64"
+          },
+          {
+            "name": "record_date_ts",
+            "type": "i64"
+          },
+          {
+            "name": "payment_date_ts",
+            "type": "i64"
+          },
+          {
+            "name": "coupon_per_bond_base",
+            "type": "u64"
+          },
+          {
+            "name": "expected_total_base",
+            "type": "u64"
+          },
+          {
+            "name": "funded_total_base",
+            "type": "u64"
+          },
+          {
+            "name": "paid_total_base",
+            "type": "u64"
+          },
+          {
+            "name": "claim_count",
+            "type": "u8"
+          },
+          {
+            "name": "status",
+            "type": {
+              "defined": {
+                "name": "CouponStatus"
+              }
+            }
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CouponPeriodCreated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "coupon",
+            "type": "pubkey"
+          },
+          {
+            "name": "bond",
+            "type": "pubkey"
+          },
+          {
+            "name": "snapshot",
+            "type": "pubkey"
+          },
+          {
+            "name": "period_id",
+            "type": "u64"
+          },
+          {
+            "name": "coupon_per_bond_base",
+            "type": "u64"
+          },
+          {
+            "name": "expected_total_base",
+            "type": "u64"
+          },
+          {
+            "name": "payment_date_ts",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CouponPeriodFunded",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "coupon",
+            "type": "pubkey"
+          },
+          {
+            "name": "funded_total_base",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CouponStatus",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Created"
+          },
+          {
+            "name": "Funded"
+          },
+          {
+            "name": "Complete"
+          }
+        ]
+      }
+    },
+    {
+      "name": "IssuanceClosed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "bond",
+            "type": "pubkey"
+          },
+          {
+            "name": "units",
+            "type": "u64"
+          },
+          {
+            "name": "holders",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "IssuerConfig",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "id",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "pending",
+            "type": "pubkey"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "IssuerInitialized",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "config",
+            "type": "pubkey"
+          },
+          {
+            "name": "authority",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Position",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "bond",
+            "type": "pubkey"
+          },
+          {
+            "name": "holder",
+            "type": "pubkey"
+          },
+          {
+            "name": "units",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PositionIssued",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "bond",
+            "type": "pubkey"
+          },
+          {
+            "name": "holder",
+            "type": "pubkey"
+          },
+          {
+            "name": "units",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Proposal",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "bond",
+            "type": "pubkey"
+          },
+          {
+            "name": "snapshot",
+            "type": "pubkey"
+          },
+          {
+            "name": "issuer",
+            "type": "pubkey"
+          },
+          {
+            "name": "proposal_id",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "content_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "title",
+            "type": "string"
+          },
+          {
+            "name": "voting_start_ts",
+            "type": "i64"
+          },
+          {
+            "name": "voting_end_ts",
+            "type": "i64"
+          },
+          {
+            "name": "quorum_bps",
+            "type": "u16"
+          },
+          {
+            "name": "approval_bps",
+            "type": "u16"
+          },
+          {
+            "name": "eligible_voting_power",
+            "type": "u64"
+          },
+          {
+            "name": "yes_voting_power",
+            "type": "u64"
+          },
+          {
+            "name": "no_voting_power",
+            "type": "u64"
+          },
+          {
+            "name": "abstain_voting_power",
+            "type": "u64"
+          },
+          {
+            "name": "participating_voting_power",
+            "type": "u64"
+          },
+          {
+            "name": "voter_count",
+            "type": "u8"
+          },
+          {
+            "name": "status",
+            "type": {
+              "defined": {
+                "name": "ProposalStatus"
+              }
+            }
+          },
+          {
+            "name": "created_at_ts",
+            "type": "i64"
+          },
+          {
+            "name": "created_slot",
+            "type": "u64"
+          },
+          {
+            "name": "finalized_at_ts",
+            "type": "i64"
+          },
+          {
+            "name": "finalized_slot",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ProposalCreated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "proposal",
+            "type": "pubkey"
+          },
+          {
+            "name": "bond",
+            "type": "pubkey"
+          },
+          {
+            "name": "snapshot",
+            "type": "pubkey"
+          },
+          {
+            "name": "issuer",
+            "type": "pubkey"
+          },
+          {
+            "name": "proposal_id",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "eligible_voting_power",
+            "type": "u64"
+          },
+          {
+            "name": "voting_start_ts",
+            "type": "i64"
+          },
+          {
+            "name": "voting_end_ts",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ProposalFinalized",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "proposal",
+            "type": "pubkey"
+          },
+          {
+            "name": "status",
+            "type": {
+              "defined": {
+                "name": "ProposalStatus"
+              }
+            }
+          },
+          {
+            "name": "eligible_voting_power",
+            "type": "u64"
+          },
+          {
+            "name": "yes_voting_power",
+            "type": "u64"
+          },
+          {
+            "name": "no_voting_power",
+            "type": "u64"
+          },
+          {
+            "name": "abstain_voting_power",
+            "type": "u64"
+          },
+          {
+            "name": "participating_voting_power",
+            "type": "u64"
+          },
+          {
+            "name": "quorum_met",
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ProposalStatus",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Open"
+          },
+          {
+            "name": "Passed"
+          },
+          {
+            "name": "Rejected"
+          }
+        ]
+      }
+    },
+    {
+      "name": "RecordDateSnapshot",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "bond",
+            "type": "pubkey"
+          },
+          {
+            "name": "snapshot_id",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "issuer",
+            "type": "pubkey"
+          },
+          {
+            "name": "record_date_ts",
+            "type": "i64"
+          },
+          {
+            "name": "created_at_ts",
+            "type": "i64"
+          },
+          {
+            "name": "created_slot",
+            "type": "u64"
+          },
+          {
+            "name": "finalized_at_ts",
+            "type": "i64"
+          },
+          {
+            "name": "finalized_slot",
+            "type": "u64"
+          },
+          {
+            "name": "expected_holder_count",
+            "type": "u8"
+          },
+          {
+            "name": "processed_holder_count",
+            "type": "u8"
+          },
+          {
+            "name": "next_index",
+            "type": "u8"
+          },
+          {
+            "name": "expected_total_units",
+            "type": "u64"
+          },
+          {
+            "name": "total_units",
+            "type": "u64"
+          },
+          {
+            "name": "status",
+            "type": {
+              "defined": {
+                "name": "SnapshotStatus"
+              }
+            }
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Redemption",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "bond",
+            "type": "pubkey"
+          },
+          {
+            "name": "snapshot",
+            "type": "pubkey"
+          },
+          {
+            "name": "settlement_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "escrow",
+            "type": "pubkey"
+          },
+          {
+            "name": "redemption_authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "issuer",
+            "type": "pubkey"
+          },
+          {
+            "name": "face_value_base",
+            "type": "u64"
+          },
+          {
+            "name": "snapshot_total_units",
+            "type": "u64"
+          },
+          {
+            "name": "expected_holder_count",
+            "type": "u8"
+          },
+          {
+            "name": "required_total_base",
+            "type": "u64"
+          },
+          {
+            "name": "funded_total_base",
+            "type": "u64"
+          },
+          {
+            "name": "paid_total_base",
+            "type": "u64"
+          },
+          {
+            "name": "burned_units",
+            "type": "u64"
+          },
+          {
+            "name": "maturity_ts",
+            "type": "i64"
+          },
+          {
+            "name": "created_at_ts",
+            "type": "i64"
+          },
+          {
+            "name": "created_slot",
+            "type": "u64"
+          },
+          {
+            "name": "activated_at_ts",
+            "type": "i64"
+          },
+          {
+            "name": "activated_slot",
+            "type": "u64"
+          },
+          {
+            "name": "claim_count",
+            "type": "u8"
+          },
+          {
+            "name": "status",
+            "type": {
+              "defined": {
+                "name": "RedemptionStatus"
+              }
+            }
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "RedemptionActivated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "redemption",
+            "type": "pubkey"
+          },
+          {
+            "name": "bond",
+            "type": "pubkey"
+          },
+          {
+            "name": "burned_units",
+            "type": "u64"
+          },
+          {
+            "name": "activated_at_ts",
+            "type": "i64"
+          },
+          {
+            "name": "activated_slot",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "RedemptionAuthority",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "redemption",
+            "type": "pubkey"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "RedemptionClaimed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "redemption",
+            "type": "pubkey"
+          },
+          {
+            "name": "holder",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount_base",
+            "type": "u64"
+          },
+          {
+            "name": "paid_total_base",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "RedemptionCreated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "redemption",
+            "type": "pubkey"
+          },
+          {
+            "name": "bond",
+            "type": "pubkey"
+          },
+          {
+            "name": "snapshot",
+            "type": "pubkey"
+          },
+          {
+            "name": "required_total_base",
+            "type": "u64"
+          },
+          {
+            "name": "snapshot_total_units",
+            "type": "u64"
+          },
+          {
+            "name": "maturity_ts",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "RedemptionFunded",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "redemption",
+            "type": "pubkey"
+          },
+          {
+            "name": "funded_total_base",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "RedemptionReceipt",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "redemption",
+            "type": "pubkey"
+          },
+          {
+            "name": "holder",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount_base",
+            "type": "u64"
+          },
+          {
+            "name": "paid_at_ts",
+            "type": "i64"
+          },
+          {
+            "name": "paid_slot",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "RedemptionStatus",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Created"
+          },
+          {
+            "name": "Funded"
+          },
+          {
+            "name": "Activated"
+          },
+          {
+            "name": "Complete"
+          }
+        ]
+      }
+    },
+    {
+      "name": "RegistryEntry",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "bond",
+            "type": "pubkey"
+          },
+          {
+            "name": "holder",
+            "type": "pubkey"
+          },
+          {
+            "name": "index",
+            "type": "u8"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "RegistryState",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "bond",
+            "type": "pubkey"
+          },
+          {
+            "name": "count",
+            "type": "u8"
+          },
+          {
+            "name": "total_units",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "SettlementConfig",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "config",
+            "type": "pubkey"
+          },
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "decimals",
+            "type": "u8"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "SettlementMintConfigured",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "config",
+            "type": "pubkey"
+          },
+          {
+            "name": "mint",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "SnapshotBatchProcessed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "snapshot",
+            "type": "pubkey"
+          },
+          {
+            "name": "start_index",
+            "type": "u8"
+          },
+          {
+            "name": "processed_holder_count",
+            "type": "u8"
+          },
+          {
+            "name": "total_units",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "SnapshotCreated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "snapshot",
+            "type": "pubkey"
+          },
+          {
+            "name": "bond",
+            "type": "pubkey"
+          },
+          {
+            "name": "record_date_ts",
+            "type": "i64"
+          },
+          {
+            "name": "expected_holder_count",
+            "type": "u8"
+          },
+          {
+            "name": "expected_total_units",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "SnapshotEntry",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "snapshot",
+            "type": "pubkey"
+          },
+          {
+            "name": "bond",
+            "type": "pubkey"
+          },
+          {
+            "name": "holder",
+            "type": "pubkey"
+          },
+          {
+            "name": "position",
+            "type": "pubkey"
+          },
+          {
+            "name": "registry_index",
+            "type": "u8"
+          },
+          {
+            "name": "units",
+            "type": "u64"
+          },
+          {
+            "name": "record_date_ts",
+            "type": "i64"
+          },
+          {
+            "name": "recorded_at_ts",
+            "type": "i64"
+          },
+          {
+            "name": "recorded_slot",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "SnapshotEntryRecorded",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "snapshot",
+            "type": "pubkey"
+          },
+          {
+            "name": "holder",
+            "type": "pubkey"
+          },
+          {
+            "name": "registry_index",
+            "type": "u8"
+          },
+          {
+            "name": "units",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "SnapshotFinalized",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "snapshot",
+            "type": "pubkey"
+          },
+          {
+            "name": "bond",
+            "type": "pubkey"
+          },
+          {
+            "name": "holder_count",
+            "type": "u8"
+          },
+          {
+            "name": "total_units",
+            "type": "u64"
+          },
+          {
+            "name": "finalized_at_ts",
+            "type": "i64"
+          },
+          {
+            "name": "finalized_slot",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "SnapshotStatus",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Scheduled"
+          },
+          {
+            "name": "Processing"
+          },
+          {
+            "name": "Finalized"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Status",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Issuing"
+          },
+          {
+            "name": "IssuanceClosed"
+          },
+          {
+            "name": "Redeemed"
+          }
+        ]
+      }
+    },
+    {
+      "name": "VoteCast",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "proposal",
+            "type": "pubkey"
+          },
+          {
+            "name": "voter",
+            "type": "pubkey"
+          },
+          {
+            "name": "choice",
+            "type": {
+              "defined": {
+                "name": "VoteChoice"
+              }
+            }
+          },
+          {
+            "name": "weight",
+            "type": "u64"
+          },
+          {
+            "name": "participating_voting_power",
+            "type": "u64"
+          },
+          {
+            "name": "voter_count",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "VoteChoice",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Yes"
+          },
+          {
+            "name": "No"
+          },
+          {
+            "name": "Abstain"
+          }
+        ]
+      }
+    },
+    {
+      "name": "VoteReceipt",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "proposal",
+            "type": "pubkey"
+          },
+          {
+            "name": "voter",
+            "type": "pubkey"
+          },
+          {
+            "name": "weight",
+            "type": "u64"
+          },
+          {
+            "name": "choice",
+            "type": {
+              "defined": {
+                "name": "VoteChoice"
+              }
+            }
+          },
+          {
+            "name": "cast_at_ts",
+            "type": "i64"
+          },
+          {
+            "name": "cast_slot",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    }
+  ]
+}

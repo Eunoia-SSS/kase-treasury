@@ -2,6 +2,7 @@ import path from "node:path";
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  outputFileTracingRoot: process.cwd(),
   poweredByHeader: false,
   webpack(config) {
     config.resolve.alias = {

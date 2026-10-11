@@ -1,9 +1,13 @@
-import { ArrowUpRight, Landmark, Plus } from "lucide-react";
+
+"use client";
+import { useRuntime } from "@/chain/runtime-context";
+import { LiveBondRegistry } from "@/components/dashboard/live-views";import { ArrowUpRight, Landmark, Plus } from "lucide-react";
 import { Card, MockLabel, PageHeading, SectionHeading, StatusBadge } from "@/components/ui/primitives";
 import { bonds, holders } from "@/lib/mock-data";
 import { formatCurrency, formatDate, formatCompactNumber } from "@/lib/format";
 
 export default function BondsPage() {
+  if (useRuntime().mode === "live") return <LiveBondRegistry />;
   const units = bonds.reduce((sum, bond) => sum + bond.outstandingUnits, 0);
   return <>
     <PageHeading eyebrow="ASSET MANAGEMENT" title="Bond registry" description="Review tokenized bond series, outstanding supply, and holder distribution." action={<button className="button button-primary" disabled title="Bond issuance is planned for a later milestone"><Plus size={16} />Issue new bond</button>} />

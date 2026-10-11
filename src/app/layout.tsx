@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { DashboardShell } from "@/components/dashboard/shell";
+import { AppProviders } from "@/components/dashboard/providers";
 
 export const metadata: Metadata = {
   title: "KASE Treasury | Bond Operations",
@@ -11,7 +12,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="en">
       <body>
-        <DashboardShell>{children}</DashboardShell>
+        <AppProviders><DashboardShell>{children}</DashboardShell></AppProviders>
       </body>
     </html>
   );

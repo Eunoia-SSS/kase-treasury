@@ -1,9 +1,13 @@
-import { ArrowUpRight, CircleCheck, Clock3, ExternalLink, FileClock } from "lucide-react";
+
+"use client";
+import { useRuntime } from "@/chain/runtime-context";
+import { LiveHistory } from "@/components/dashboard/live-views";import { ArrowUpRight, CircleCheck, Clock3, ExternalLink, FileClock } from "lucide-react";
 import { Card, MockLabel, PageHeading, SectionHeading, StatusBadge } from "@/components/ui/primitives";
 import { transactions } from "@/lib/mock-data";
 import { formatCurrency, formatDate } from "@/lib/format";
 
 export default function TransactionsPage() {
+  if (useRuntime().mode === "live") return <LiveHistory />;
   return <>
     <PageHeading eyebrow="AUDIT TRAIL" title="Transaction history" description="Review lifecycle events and settlement activity across your bond series." action={<button className="button button-secondary" disabled title="Explorer signatures are mock values"><ExternalLink size={15} />Solana Explorer</button>} />
     <div className="dashboard-grid stat-grid compact-stats">

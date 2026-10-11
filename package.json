@@ -14,15 +14,17 @@
     "demo:devnet": "ts-mocha -p tests/tsconfig.json -t 1000000 scripts/devnet-demo.ts"
   },
   "dependencies": {
+    "@coral-xyz/anchor": "^0.31.1",
+    "@solana/spl-token": "^0.4.13",
+    "@solana/wallet-adapter-base": "^0.9.28",
+    "@solana/wallet-standard-wallet-adapter-react": "^1.1.8",
     "lucide-react": "^0.468.0",
     "next": "^15.1.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
-    "@coral-xyz/anchor": "0.31.1",
     "@eslint/eslintrc": "^3.3.7",
-    "@solana/spl-token": "0.4.13",
     "@tailwindcss/postcss": "^4.0.0",
     "@types/mocha": "10.0.10",
     "@types/node": "20.17.6",

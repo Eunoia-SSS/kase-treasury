@@ -1,9 +1,13 @@
-import { ArrowRight, CalendarDays, CircleDollarSign, Plus, ShieldCheck } from "lucide-react";
+
+"use client";
+import { useRuntime } from "@/chain/runtime-context";
+import { LiveActions } from "@/components/dashboard/live-views";import { ArrowRight, CalendarDays, CircleDollarSign, Plus, ShieldCheck } from "lucide-react";
 import { Card, MockLabel, PageHeading, SectionHeading, StatusBadge } from "@/components/ui/primitives";
 import { bonds, corporateActions, snapshots } from "@/lib/mock-data";
 import { formatCurrency, formatDate, formatCompactNumber } from "@/lib/format";
 
 export default function ActionsPage() {
+  if (useRuntime().mode === "live") return <LiveActions />;
   return <>
     <PageHeading eyebrow="LIFECYCLE OPERATIONS" title="Corporate actions" description="Plan record dates, review entitlements, and monitor coupon or redemption settlement." action={<button className="button button-primary" disabled title="Action scheduling is planned for a later milestone"><Plus size={16} />Schedule action</button>} />
     <div className="dashboard-grid stat-grid compact-stats">

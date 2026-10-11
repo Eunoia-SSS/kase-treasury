@@ -1,9 +1,13 @@
-import { ArrowRight, Check, Clock3, Plus, Vote, X } from "lucide-react";
+
+"use client";
+import { useRuntime } from "@/chain/runtime-context";
+import { LiveGovernance } from "@/components/dashboard/live-views";import { ArrowRight, Check, Clock3, Plus, Vote, X } from "lucide-react";
 import { Card, MockLabel, PageHeading, SectionHeading, StatusBadge } from "@/components/ui/primitives";
 import { bonds, proposals } from "@/lib/mock-data";
 import { formatDate, formatCompactNumber } from "@/lib/format";
 
 export default function GovernancePage() {
+  if (useRuntime().mode === "live") return <LiveGovernance />;
   return <>
     <PageHeading eyebrow="BONDHOLDER GOVERNANCE" title="Governance" description="Track bondholder proposals and participation weighted by eligible units." action={<button className="button button-primary" disabled title="Proposal creation is planned for a later milestone"><Plus size={16} />Create proposal</button>} />
     <div className="dashboard-grid stat-grid compact-stats">

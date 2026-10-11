@@ -137,10 +137,10 @@ The target workflow covers issuer setup, bond registry, snapshots, coupons, rede
 
 ### M9 — Frontend integration
 
-- **Tasks:** Add wallet and typed Anchor client; implement read/write flows and errors; replace fixtures only for live data; show cluster/account/signature provenance.
-- **Dependencies:** Stable IDL and verified M8 deployment.
-- **Acceptance:** Read-only UI works without wallet; flows match confirmed accounts and mock data stays identifiable.
-- **Tests:** Mapping/unit, browser, wallet/network/error and Devnet journey.
+**Status:** M9A local frontend foundation is implemented. A browser-wallet Localnet smoke test remains, while Devnet integration waits for a separately approved deployment.
+
+- **Implemented:** Checked-in IDL client, Localnet/Devnet selector and status, Wallet Standard discovery, read-only on-chain account views, wallet-approved operations, transaction status/signature links, and explicit fixture-only public Demo Mode.
+- **Remaining:** Validate connection and one transaction from a real browser wallet against the local validator; later verify Devnet after deployment. Full historical indexing, multi-wallet co-signing, and large-registry pagination are outside this initial integration.
 
 ### M10 — GitHub workflow and project documentation
 
@@ -182,4 +182,18 @@ The target workflow covers issuer setup, bond registry, snapshots, coupons, rede
 
 ## Current status and next gate
 
-M0 remains a mock-only frontend; dev server and production build were previously reported working. M1 documentation is complete. M2-M6 are on main tracked by origin. M7 review fixes and documentation are local and unpushed. No Devnet or Vercel deployment exists. **Next: resolve the program-ID/keypair mismatch and prepare an approved Devnet smoke client (M8).**
+M1-M8A documentation, program work, local integration, and demo client status are recorded above. M9A connects the frontend to Localnet/Devnet behind a live-mode setting and preserves a transaction-free public Demo Mode. Frontend typecheck, source lint, production build, test typecheck, and all 13 M2-M6 local-validator tests pass. Devnet remains un-deployed and unfunded; no push or Vercel deployment has occurred.
+
+
+### M9A — Frontend integration with Localnet
+
+**Status:** Implemented locally; no deployment or push performed.
+
+- Runtime modes: public Demo Mode uses deterministic fixture data, makes no RPC calls, and sends no transactions. NEXT_PUBLIC_APP_MODE=live enables Localnet/Devnet selection, Wallet Standard discovery, RPC/program status, and wallet SOL balance.
+- Live views: dashboard and bond/action/governance/history routes fetch Anchor accounts and bond-PDA signatures with the checked-in IDL and Program ID 7P3NaKZkqSKHYjTUF638mZifpWMeVq1qvfPNNjtVFjWZ. No indexer exists; history is bounded.
+- Operations: /operations offers issuer setup/bond creation, current-wallet holder registration, issuance close, snapshot create/batch/finalize, local demo DSET creation/configuration, coupon create/fund/claim, proposal create/vote/finalize, and redemption create/fund/activate/claim.
+- Authorization: wallet approval is required; issuer/investor key files are never read. Registration supports the connected issuer wallet as holder because the program requires both issuer and holder signatures.
+- Vercel: use Demo Mode (default if unset); it does not need a Localnet endpoint. Devnet is selectable in live mode, but the program is not deployed there.
+- Dependencies: Wallet Standard React adapter 1.1.8 and wallet-adapter-base 0.9.28 are used with web3.js 1.99.0; Anchor 0.31.1 and SPL Token 0.4.13 are runtime dependencies.
+- Verification: frontend lint, app typecheck, production build, test typecheck, and the full 13-case M2-M6 local-validator suite pass. Production HTTP smoke checks return 200 for all six routes. A browser-wallet Localnet signature smoke test remains.
+- Limitations: no multi-wallet co-signing for issuer plus unrelated holder; no indexer or complete on-chain history; browser DSET setup is for local test mints; Devnet deployment and transactions await approval and funding.

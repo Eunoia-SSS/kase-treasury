@@ -1,22 +1,22 @@
 # KASE Treasury — Architecture
 
-**Status:** M2 issuance/registry, M3 snapshots, M4 coupon settlement, M5 principal redemption, and M6 informational governance are implemented and local-validator tested. Frontend chain integration remains future work.
+**Status:** M2 issuance/registry, M3 snapshots, M4 coupon settlement, M5 principal redemption, and M6 informational governance are implemented and local-validator tested. M9A adds wallet-connected Localnet/Devnet reads and transaction workflows; public Demo Mode remains simulated.
 
 ## Current implementation
 
-Frontend: static Next.js mock dashboard with overview, bonds, actions, governance, transactions; reusable UI; typed domain models; fabricated fixtures.
+Frontend: Next.js dashboard with deterministic public Demo Mode and live Localnet/Devnet mode, responsive shell, Wallet Standard discovery, typed Anchor client, account readers, wallet-signed transaction console, and fixtures used only in Demo Mode.
 
 Anchor workspace (M2-M6 implemented; localnet only): Anchor.toml pins Anchor 0.31.1/Solana 2.1.0; Cargo workspace/lockfile are present; programs/kase_treasury/src/lib.rs contains issuer, bond, registry, SPL mint/vault, issuance, closure, snapshots, errors and events. tests/kase_treasury.ts contains validator tests.
 
-The frontend has no wallet adapter, RPC client, indexer, database, or authoritative chain history. Displayed values/signatures remain mock data. The Anchor program covers M2 registry/issuance, M3 snapshots, M4 coupon settlement, M5 principal redemption, and M6 governance locally; frontend chain integration is absent. Local tests do not imply deployment or audit.
+Live mode uses Wallet Standard discovery through the lightweight Solana wallet adapter packages and the checked-in Anchor IDL/Program ID for reads and wallet-signed transactions. Demo Mode does not issue RPC requests. There is no indexer or database; live history is a bounded scan of signatures touching up to 20 bond PDAs, not a complete event index. The Anchor program covers M2-M6 locally; M9A adds frontend reads and transaction workflows. Local tests do not imply deployment or audit.
 
 ## Target runtime boundaries
 
 ```text
 Next.js presentation
         │ typed use-case/data-access interface
-        ├── mock adapter (current)
-        ├── Anchor client → Solana program (future writes and account reads)
+        ├── mock adapter (public Demo Mode)
+        ├── Anchor client → Solana program (live reads and wallet-signed writes)
         └── indexed read model (optional future history/dashboard queries)
 ```
 
@@ -25,8 +25,8 @@ Next.js presentation
 - **Data access:** typed interface hides fixture/program/indexer source. Live records carry cluster, account/signature provenance, and freshness.
 - **Program:** Anchor validates authority, accounts, mints, state transitions, snapshots, replay protection, and settlement.
 - **Token/registry (M2 implemented):** Classic SPL Token; all whole 0-decimal units remain in the PDA-authorized vault. BondAuthority is mint authority and vault owner. Position PDAs record beneficial holdings; registration requires holder and issuer signatures. No holder ATA or transfer instruction exists. This is a disclosed prototype custody trade-off.
-- **Wallet:** future provider boundary; read-only views should remain usable without a connected wallet.
-- **History:** program accounts and confirmed transaction signatures are authoritative. An indexer may accelerate history queries but cannot independently determine entitlement.
+- **Wallet:** Wallet Standard integration auto-discovers compatible browser wallets. Read-only live views do not require a connected wallet; signing controls require a connected wallet. The frontend never reads keypair or seed files.
+- **History:** decoded program accounts and confirmed signatures are authoritative. The current frontend queries up to 10 signatures for each of the first 20 bonds; complete history requires a later indexer. An indexer cannot independently determine entitlement.
 
 ## Proposed on-chain components
 
@@ -44,4 +44,4 @@ Bond mint decimals are 0 (whole bonds) and the classic SPL mint remains in PDA c
 
 ## Current project status
 
-The UI remains mock-only. M2-M6 pass Rust unit and Anchor local-validator tests. Coupon settlement, redemption, and governance are local-validator-only; no Devnet or wallet integration exists. M2-M6 are on the main branch tracked by origin. M7 review changes are local and unpushed. Vercel is not configured. Tests are not an audit. Devnet readiness is blocked on program-ID/keypair alignment and a deployer wallet.
+Public Demo Mode uses static mock fixtures; live mode has account reads and wallet-approved transaction flows. M2-M6 pass Rust unit and Anchor local-validator tests. Coupon settlement, redemption, and governance are local-validator-only; Devnet deployment has not occurred; browser-wallet Localnet flows require local validation. M2-M6 are on the main branch tracked by origin. M7 review changes are local and unpushed. Vercel is not configured. Tests are not an audit. Devnet deployment remains unfunded and unapproved. The browser Localnet interface is wired but still needs an end-user wallet smoke test; no Devnet deployment has occurred.

@@ -1,10 +1,14 @@
-import Link from "next/link";
+
+"use client";
+import { useRuntime } from "@/chain/runtime-context";
+import { LiveOverview } from "./live-views";import Link from "next/link";
 import { ArrowDownRight, ArrowRight, ArrowUpRight, CalendarDays, CircleDollarSign, Clock3, Landmark, MoreHorizontal, Plus, ShieldCheck, Sparkles, UsersRound, Vote } from "lucide-react";
 import { bonds, corporateActions, proposals, snapshots, transactions } from "@/lib/mock-data";
 import { formatCurrency, formatDate, formatCompactNumber } from "@/lib/format";
 import { Card, MockLabel, PageHeading, SectionHeading, StatusBadge } from "@/components/ui/primitives";
 
 export function OverviewDashboard() {
+  if (useRuntime().mode === "live") return <LiveOverview />;
   const activeBonds = bonds.filter((bond) => bond.status !== "Matured").length;
   const outstanding = bonds.reduce((total, bond) => total + bond.outstandingUnits * bond.faceValue, 0);
   const nextAction = corporateActions.find((action) => action.status !== "Completed")!;

@@ -1,6 +1,6 @@
 # KASE Treasury — Product Specification
 
-**Status:** M1 specification with M2 issuance/registry and M3 snapshots implemented locally. Coupon settlement, redemption, governance and frontend chain workflows remain proposed and unimplemented. KASE Treasury is an independent project in the Superteam Kazakhstan × KASE Corporate Actions on Blockchain challenge context. It is not an official KASE product and does not claim partnership, endorsement, or approval.
+**Status:** M1 specification with M2 issuance/registry, M3 snapshots, and M4 coupon settlement implemented and local-validator-tested. Redemption, governance, and frontend chain workflows remain proposed and unimplemented. KASE Treasury is an independent project in the Superteam Kazakhstan × KASE Corporate Actions on Blockchain challenge context. It is not an official KASE product and does not claim partnership, endorsement, or approval.
 
 ## Positioning
 
@@ -27,7 +27,7 @@ These are design assumptions, not claims about a named institution's current sys
 
 ## MVP scope
 
-Eventual hackathon MVP: one issuer, a bounded holder population (initial cap 100), one or a few test bond series, and an issuer-created demo settlement mint. The selected candidate keeps classic SPL bond tokens in a program-controlled vault; program-owned Position PDAs record beneficial holders. Holders receive no SPL bond tokens in their wallets, and direct or peer-to-peer transfers are disabled in the MVP. Implement holder-consented registration, issuer-authorized issuance, cutoff locks and immutable snapshots, semiannual coupons with idempotent claims, maturity redemption and unit retirement, snapshot-weighted proposals/votes, and a dashboard backed by confirmed Devnet state. Snapshot processing must be bounded and batchable. This custodial position model is a prototype trade-off, not a production custody recommendation. The current frontend is only a static mock-data scaffold; wallet, program actions, indexing, and live transaction history are not implemented.
+Eventual hackathon MVP: one issuer, a bounded holder population (initial cap 100), one or a few test bond series, and an existing demo settlement mint registered to the issuer. The selected candidate keeps classic SPL bond tokens in a program-controlled vault; program-owned Position PDAs record beneficial holders. Holders receive no SPL bond tokens in their wallets, and direct or peer-to-peer transfers are disabled in the MVP. Implement holder-consented registration, issuer-authorized issuance, cutoff locks and immutable snapshots, semiannual coupons with idempotent claims, maturity redemption and unit retirement, snapshot-weighted proposals/votes, and a dashboard backed by confirmed Devnet state. Snapshot processing must be bounded and batchable. This custodial position model is a prototype trade-off, not a production custody recommendation. The current frontend is only a static mock-data scaffold; wallet integration, indexing, and live transaction history are not implemented. M4 coupon instructions work on a local validator but are not wired to the frontend or deployed.
 
 ## Out of scope
 
@@ -47,4 +47,4 @@ Use fabricated Devnet wallets and DSET test tokens with no monetary value. Confi
 
 ## Decisions and unresolved risks
 
-M1 chooses six-decimal DSET, whole-bond units, fixed semiannual coupon math, program-controlled positions, timestamp-based cutoff, and immutable snapshots. This M2 preparation recommends classic SPL Token custody in a PDA vault plus beneficial-holder Position PDAs over Token-2022 NonTransferable wallet balances because it avoids extensions and holder-controlled SPL transfers. Owner approval is required for the custody trade-off before coding. Future transfer policy, multisig, unclaimed-payment closeout, registry scale, and any real-market integration remain unresolved and outside current claims.
+M1 chooses six-decimal demo DSET, whole-bond units, fixed semiannual coupon math, program-controlled positions, timestamp-based cutoff, and immutable snapshots. M2/M3 implement classic SPL custody and snapshots; M4 implements one-time issuer settlement-mint registration, exact reserve funding, and holder-signed claims. Redemption and governance remain future work. This is an educational prototype, not production custody. Future transfer policy, multisig, unclaimed-payment closeout, registry scale, and any real-market integration remain unresolved and outside current claims.

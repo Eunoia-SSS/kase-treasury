@@ -20,6 +20,12 @@ pub const POSITION: &[u8] = b"position";
 pub const REGISTRY_ENTRY: &[u8] = b"registry_entry";
 pub const SNAPSHOT: &[u8] = b"snapshot";
 pub const SNAPSHOT_ENTRY: &[u8] = b"snapshot_entry";
+pub const SETTLEMENT_CONFIG: &[u8] = b"settlement_config";
+pub const COUPON: &[u8] = b"coupon";
+pub const COUPON_AUTHORITY: &[u8] = b"coupon_authority";
+pub const COUPON_VAULT: &[u8] = b"coupon_vault";
+pub const CLAIM: &[u8] = b"coupon_claim";
+pub const DSET_DECIMALS: u8 = 6;
 pub const MAX_HOLDERS: usize = 100;
 pub const MAX_SNAPSHOT_BATCH: u8 = 5;
 
@@ -651,6 +657,375 @@ pub mod kase_treasury {
         });
         Ok(())
     }
+
+    pub fn configure_settlement_mint(ctx: Context<ConfigureSettlementMint>) -> Result<()> {
+        check_dset_mint(&ctx.accounts.settlement_mint)?;
+        let settlement = &mut ctx.accounts.settlement_config;
+        settlement.config = ctx.accounts.config.key();
+        settlement.mint = ctx.accounts.settlement_mint.key();
+        settlement.decimals = DSET_DECIMALS;
+        settlement.bump = ctx.bumps.settlement_config;
+        emit!(SettlementMintConfigured {
+            config: settlement.config,
+            mint: settlement.mint
+        });
+        Ok(())
+    }
+
+    pub fn create_coupon_period(
+        ctx: Context<CreateCouponPeriod>,
+        period_id: u64,
+        record_date_ts: i64,
+        payment_date_ts: i64,
+    ) -> Result<()> {
+        require!(
+            ctx.accounts.bond.status == Status::IssuanceClosed,
+            ErrorCode::IssuanceNotClosed
+        );
+        require!(
+            ctx.accounts.snapshot.status == SnapshotStatus::Finalized,
+            ErrorCode::SnapshotNotFinalized
+        );
+        require!(
+            ctx.accounts.snapshot.bond == ctx.accounts.bond.key()
+                && record_date_ts == ctx.accounts.snapshot.record_date_ts,
+            ErrorCode::WrongSnapshot
+        );
+        let now = Clock::get()?.unix_timestamp;
+        require!(record_date_ts <= now, ErrorCode::SnapshotNotDue);
+        require!(
+            payment_date_ts > record_date_ts && payment_date_ts >= now,
+            ErrorCode::InvalidPaymentDate
+        );
+        require!(
+            ctx.accounts.snapshot.total_units > 0
+                && ctx.accounts.snapshot.expected_holder_count > 0
+                && ctx.accounts.snapshot.total_units == ctx.accounts.bond.outstanding,
+            ErrorCode::SnapshotTotalMismatch
+        );
+        require!(
+            ctx.accounts.settlement_config.config == ctx.accounts.config.key()
+                && ctx.accounts.settlement_config.mint == ctx.accounts.settlement_mint.key()
+                && ctx.accounts.settlement_config.decimals == DSET_DECIMALS,
+            ErrorCode::InvalidSettlementMint
+        );
+        check_dset_mint(&ctx.accounts.settlement_mint)?;
+        let per = coupon_per_bond_base(&ctx.accounts.bond)?;
+        let raw = u128::from(per)
+            .checked_mul(u128::from(ctx.accounts.snapshot.total_units))
+            .ok_or(ErrorCode::Overflow)?;
+        let total = u64::try_from(raw).map_err(|_| error!(ErrorCode::Overflow))?;
+        require!(total > 0, ErrorCode::ZeroCoupon);
+        let ix = spl_token::instruction::initialize_account3(
+            &spl_token::ID,
+            &ctx.accounts.escrow.key(),
+            &ctx.accounts.settlement_mint.key(),
+            &ctx.accounts.coupon_authority.key(),
+        )?;
+        invoke(
+            &ix,
+            &[
+                ctx.accounts.escrow.to_account_info(),
+                ctx.accounts.settlement_mint.to_account_info(),
+                ctx.accounts.token_program.to_account_info(),
+            ],
+        )?;
+        let coupon = &mut ctx.accounts.coupon;
+        coupon.bond = ctx.accounts.bond.key();
+        coupon.snapshot = ctx.accounts.snapshot.key();
+        coupon.settlement_mint = ctx.accounts.settlement_mint.key();
+        coupon.escrow = ctx.accounts.escrow.key();
+        coupon.coupon_authority = ctx.accounts.coupon_authority.key();
+        coupon.issuer = ctx.accounts.authority.key();
+        coupon.period_id = period_id;
+        coupon.record_date_ts = record_date_ts;
+        coupon.payment_date_ts = payment_date_ts;
+        coupon.coupon_per_bond_base = per;
+        coupon.expected_total_base = total;
+        coupon.funded_total_base = 0;
+        coupon.paid_total_base = 0;
+        coupon.claim_count = 0;
+        coupon.status = CouponStatus::Created;
+        coupon.bump = ctx.bumps.coupon;
+        ctx.accounts.coupon_authority.coupon = coupon.key();
+        ctx.accounts.coupon_authority.bump = ctx.bumps.coupon_authority;
+        emit!(CouponPeriodCreated {
+            coupon: coupon.key(),
+            bond: coupon.bond,
+            snapshot: coupon.snapshot,
+            period_id,
+            coupon_per_bond_base: per,
+            expected_total_base: total,
+            payment_date_ts
+        });
+        Ok(())
+    }
+
+    pub fn fund_coupon_period(ctx: Context<FundCouponPeriod>, amount: u64) -> Result<()> {
+        let coupon = &ctx.accounts.coupon;
+        require!(
+            coupon.status == CouponStatus::Created,
+            ErrorCode::InvalidTransition
+        );
+        require!(
+            amount == coupon.expected_total_base && amount > 0,
+            ErrorCode::FundingAmountMismatch
+        );
+        require!(
+            ctx.accounts.bond.status == Status::IssuanceClosed
+                && coupon.bond == ctx.accounts.bond.key(),
+            ErrorCode::WrongBond
+        );
+        require!(
+            ctx.accounts.settlement_config.config == ctx.accounts.config.key()
+                && ctx.accounts.settlement_config.mint == coupon.settlement_mint,
+            ErrorCode::InvalidSettlementMint
+        );
+        check_dset_mint(&ctx.accounts.settlement_mint)?;
+        check_token_account(
+            &ctx.accounts.source.to_account_info(),
+            coupon.settlement_mint,
+            ctx.accounts.authority.key(),
+            ErrorCode::InvalidSettlementAccount,
+        )?;
+        check_coupon_escrow(&ctx.accounts.escrow, coupon, 0)?;
+        let ix = spl_token::instruction::transfer(
+            &spl_token::ID,
+            &ctx.accounts.source.key(),
+            &ctx.accounts.escrow.key(),
+            &ctx.accounts.authority.key(),
+            &[],
+            amount,
+        )?;
+        invoke(
+            &ix,
+            &[
+                ctx.accounts.source.to_account_info(),
+                ctx.accounts.escrow.to_account_info(),
+                ctx.accounts.authority.to_account_info(),
+                ctx.accounts.token_program.to_account_info(),
+            ],
+        )?;
+        let coupon = &mut ctx.accounts.coupon;
+        coupon.funded_total_base = amount;
+        coupon.status = CouponStatus::Funded;
+        check_coupon_escrow(&ctx.accounts.escrow, coupon, 0)?;
+        emit!(CouponPeriodFunded {
+            coupon: coupon.key(),
+            funded_total_base: amount
+        });
+        Ok(())
+    }
+
+    pub fn claim_coupon(ctx: Context<ClaimCoupon>) -> Result<()> {
+        let coupon = &ctx.accounts.coupon;
+        require!(
+            coupon.status == CouponStatus::Funded,
+            ErrorCode::CouponNotFunded
+        );
+        require!(
+            Clock::get()?.unix_timestamp >= coupon.payment_date_ts,
+            ErrorCode::PaymentNotDue
+        );
+        require!(
+            ctx.accounts.snapshot.status == SnapshotStatus::Finalized
+                && ctx.accounts.snapshot.key() == coupon.snapshot
+                && ctx.accounts.snapshot.bond == coupon.bond,
+            ErrorCode::WrongSnapshot
+        );
+        require!(
+            ctx.accounts.bond.key() == coupon.bond
+                && ctx.accounts.bond.status == Status::IssuanceClosed,
+            ErrorCode::WrongBond
+        );
+        require!(
+            ctx.accounts.snapshot_entry.snapshot == coupon.snapshot
+                && ctx.accounts.snapshot_entry.bond == coupon.bond
+                && ctx.accounts.snapshot_entry.holder == ctx.accounts.holder.key()
+                && ctx.accounts.snapshot_entry.units > 0,
+            ErrorCode::IneligibleHolder
+        );
+        require!(
+            ctx.accounts.settlement_config.config == ctx.accounts.config.key()
+                && ctx.accounts.settlement_config.mint == coupon.settlement_mint,
+            ErrorCode::InvalidSettlementMint
+        );
+        check_dset_mint(&ctx.accounts.settlement_mint)?;
+        check_token_account(
+            &ctx.accounts.destination.to_account_info(),
+            coupon.settlement_mint,
+            ctx.accounts.holder.key(),
+            ErrorCode::InvalidDestination,
+        )?;
+        let raw = u128::from(coupon.coupon_per_bond_base)
+            .checked_mul(u128::from(ctx.accounts.snapshot_entry.units))
+            .ok_or(ErrorCode::Overflow)?;
+        let amount = u64::try_from(raw).map_err(|_| error!(ErrorCode::Overflow))?;
+        require!(amount > 0, ErrorCode::ZeroCoupon);
+        let paid = coupon
+            .paid_total_base
+            .checked_add(amount)
+            .ok_or(ErrorCode::Overflow)?;
+        require!(
+            paid <= coupon.funded_total_base,
+            ErrorCode::InsufficientReserve
+        );
+        check_coupon_escrow(&ctx.accounts.escrow, coupon, amount)?;
+        let bump = [ctx.accounts.coupon_authority.bump];
+        let key = coupon.key();
+        let seeds: &[&[u8]] = &[COUPON_AUTHORITY, key.as_ref(), &bump];
+        let ix = spl_token::instruction::transfer(
+            &spl_token::ID,
+            &ctx.accounts.escrow.key(),
+            &ctx.accounts.destination.key(),
+            &ctx.accounts.coupon_authority.key(),
+            &[],
+            amount,
+        )?;
+        invoke_signed(
+            &ix,
+            &[
+                ctx.accounts.escrow.to_account_info(),
+                ctx.accounts.destination.to_account_info(),
+                ctx.accounts.coupon_authority.to_account_info(),
+                ctx.accounts.token_program.to_account_info(),
+            ],
+            &[seeds],
+        )?;
+        let clock = Clock::get()?;
+        let record = &mut ctx.accounts.claim_record;
+        record.coupon = key;
+        record.holder = ctx.accounts.holder.key();
+        record.amount_base = amount;
+        record.paid_at_ts = clock.unix_timestamp;
+        record.paid_slot = clock.slot;
+        record.bump = ctx.bumps.claim_record;
+        let coupon = &mut ctx.accounts.coupon;
+        coupon.paid_total_base = paid;
+        coupon.claim_count = coupon
+            .claim_count
+            .checked_add(1)
+            .ok_or(ErrorCode::Overflow)?;
+        if paid == coupon.expected_total_base {
+            coupon.status = CouponStatus::Complete;
+        }
+        check_coupon_escrow(&ctx.accounts.escrow, coupon, 0)?;
+        emit!(CouponClaimed {
+            coupon: key,
+            holder: record.holder,
+            amount_base: amount,
+            paid_total_base: paid
+        });
+        Ok(())
+    }
+}
+
+#[derive(Accounts)]
+pub struct ConfigureSettlementMint<'info> {
+    #[account(seeds=[ISSUER, config.id.as_ref()], bump=config.bump, has_one=authority)]
+    pub config: Account<'info, IssuerConfig>,
+    #[account(mut)]
+    pub authority: Signer<'info>,
+    #[account(init, payer=authority, space=SettlementConfig::SPACE, seeds=[SETTLEMENT_CONFIG, config.key().as_ref()], bump)]
+    pub settlement_config: Account<'info, SettlementConfig>,
+    /// CHECK: validated as classic SPL mint with six decimals.
+    pub settlement_mint: UncheckedAccount<'info>,
+    #[account(address=spl_token::ID)]
+    /// CHECK: canonical classic SPL Token Program.
+    pub token_program: UncheckedAccount<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+#[instruction(period_id: u64)]
+pub struct CreateCouponPeriod<'info> {
+    #[account(seeds=[ISSUER, config.id.as_ref()], bump=config.bump, has_one=authority)]
+    pub config: Account<'info, IssuerConfig>,
+    #[account(mut)]
+    pub authority: Signer<'info>,
+    #[account(seeds=[BOND, config.key().as_ref(), bond.id.as_ref()], bump=bond.bump, has_one=config)]
+    pub bond: Account<'info, Bond>,
+    #[account(seeds=[SNAPSHOT, bond.key().as_ref(), snapshot.snapshot_id.as_ref()], bump=snapshot.bump, has_one=bond)]
+    pub snapshot: Account<'info, RecordDateSnapshot>,
+    #[account(seeds=[SETTLEMENT_CONFIG, config.key().as_ref()], bump=settlement_config.bump, has_one=config)]
+    pub settlement_config: Account<'info, SettlementConfig>,
+    #[account(address=settlement_config.mint)]
+    /// CHECK: validated classic SPL mint.
+    pub settlement_mint: UncheckedAccount<'info>,
+    #[account(init, payer=authority, space=CouponPeriod::SPACE, seeds=[COUPON, bond.key().as_ref(), &period_id.to_le_bytes()], bump)]
+    pub coupon: Account<'info, CouponPeriod>,
+    #[account(init, payer=authority, space=CouponAuthority::SPACE, seeds=[COUPON_AUTHORITY, coupon.key().as_ref()], bump)]
+    pub coupon_authority: Account<'info, CouponAuthority>,
+    #[account(init, payer=authority, owner=spl_token::ID, space=SplAccount::LEN, seeds=[COUPON_VAULT, coupon.key().as_ref()], bump)]
+    /// CHECK: initialized as token account controlled by coupon authority PDA.
+    pub escrow: UncheckedAccount<'info>,
+    #[account(address=spl_token::ID)]
+    /// CHECK: canonical classic SPL Token Program.
+    pub token_program: UncheckedAccount<'info>,
+    pub system_program: Program<'info, System>,
+    pub rent: Sysvar<'info, Rent>,
+}
+
+#[derive(Accounts)]
+pub struct FundCouponPeriod<'info> {
+    #[account(seeds=[ISSUER, config.id.as_ref()], bump=config.bump, has_one=authority)]
+    pub config: Account<'info, IssuerConfig>,
+    #[account(mut)]
+    pub authority: Signer<'info>,
+    #[account(seeds=[BOND, bond.config.as_ref(), bond.id.as_ref()], bump=bond.bump, has_one=config)]
+    pub bond: Account<'info, Bond>,
+    #[account(mut, seeds=[COUPON, bond.key().as_ref(), &coupon.period_id.to_le_bytes()], bump=coupon.bump, has_one=bond)]
+    pub coupon: Account<'info, CouponPeriod>,
+    #[account(seeds=[SETTLEMENT_CONFIG, config.key().as_ref()], bump=settlement_config.bump, has_one=config)]
+    pub settlement_config: Account<'info, SettlementConfig>,
+    #[account(address=coupon.settlement_mint)]
+    /// CHECK: validated registered settlement mint.
+    pub settlement_mint: UncheckedAccount<'info>,
+    #[account(mut)]
+    /// CHECK: validated token account owned by issuer.
+    pub source: UncheckedAccount<'info>,
+    #[account(mut, address=coupon.escrow)]
+    /// CHECK: validated escrow mint, authority and balance.
+    pub escrow: UncheckedAccount<'info>,
+    #[account(address=spl_token::ID)]
+    /// CHECK: canonical classic SPL Token Program.
+    pub token_program: UncheckedAccount<'info>,
+}
+
+#[derive(Accounts)]
+pub struct ClaimCoupon<'info> {
+    #[account(seeds=[ISSUER, config.id.as_ref()], bump=config.bump)]
+    pub config: Account<'info, IssuerConfig>,
+    #[account(seeds=[BOND, bond.config.as_ref(), bond.id.as_ref()], bump=bond.bump, has_one=config)]
+    pub bond: Account<'info, Bond>,
+    #[account(mut, seeds=[COUPON, bond.key().as_ref(), &coupon.period_id.to_le_bytes()], bump=coupon.bump, has_one=bond)]
+    pub coupon: Account<'info, CouponPeriod>,
+    #[account(seeds=[SNAPSHOT, bond.key().as_ref(), snapshot.snapshot_id.as_ref()], bump=snapshot.bump, has_one=bond)]
+    pub snapshot: Account<'info, RecordDateSnapshot>,
+    pub holder: Signer<'info>,
+    #[account(seeds=[SNAPSHOT_ENTRY, snapshot.key().as_ref(), holder.key().as_ref()], bump=snapshot_entry.bump)]
+    pub snapshot_entry: Account<'info, SnapshotEntry>,
+    #[account(seeds=[SETTLEMENT_CONFIG, config.key().as_ref()], bump=settlement_config.bump, has_one=config)]
+    pub settlement_config: Account<'info, SettlementConfig>,
+    #[account(address=coupon.settlement_mint)]
+    /// CHECK: validated registered settlement mint.
+    pub settlement_mint: UncheckedAccount<'info>,
+    #[account(seeds=[COUPON_AUTHORITY, coupon.key().as_ref()], bump=coupon_authority.bump, constraint=coupon_authority.coupon == coupon.key() @ ErrorCode::WrongAuthority)]
+    pub coupon_authority: Account<'info, CouponAuthority>,
+    #[account(mut, address=coupon.escrow)]
+    /// CHECK: validates escrow token state and accounting.
+    pub escrow: UncheckedAccount<'info>,
+    #[account(mut)]
+    /// CHECK: validated as token account owned by holder with configured mint.
+    pub destination: UncheckedAccount<'info>,
+    #[account(init, payer=payer, space=ClaimRecord::SPACE, seeds=[CLAIM, coupon.key().as_ref(), holder.key().as_ref()], bump)]
+    pub claim_record: Account<'info, ClaimRecord>,
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    #[account(address=spl_token::ID)]
+    /// CHECK: canonical classic SPL Token Program.
+    pub token_program: UncheckedAccount<'info>,
+    pub system_program: Program<'info, System>,
 }
 
 #[derive(Accounts)]
@@ -847,6 +1222,69 @@ pub struct FinalizeSnapshot<'info> {
 }
 
 #[account]
+pub struct SettlementConfig {
+    pub config: Pubkey,
+    pub mint: Pubkey,
+    pub decimals: u8,
+    pub bump: u8,
+}
+impl SettlementConfig {
+    pub const SPACE: usize = 74;
+}
+
+#[account]
+pub struct CouponAuthority {
+    pub coupon: Pubkey,
+    pub bump: u8,
+}
+impl CouponAuthority {
+    pub const SPACE: usize = 41;
+}
+
+#[account]
+pub struct CouponPeriod {
+    pub bond: Pubkey,
+    pub snapshot: Pubkey,
+    pub settlement_mint: Pubkey,
+    pub escrow: Pubkey,
+    pub coupon_authority: Pubkey,
+    pub issuer: Pubkey,
+    pub period_id: u64,
+    pub record_date_ts: i64,
+    pub payment_date_ts: i64,
+    pub coupon_per_bond_base: u64,
+    pub expected_total_base: u64,
+    pub funded_total_base: u64,
+    pub paid_total_base: u64,
+    pub claim_count: u8,
+    pub status: CouponStatus,
+    pub bump: u8,
+}
+impl CouponPeriod {
+    pub const SPACE: usize = 264;
+}
+
+#[account]
+pub struct ClaimRecord {
+    pub coupon: Pubkey,
+    pub holder: Pubkey,
+    pub amount_base: u64,
+    pub paid_at_ts: i64,
+    pub paid_slot: u64,
+    pub bump: u8,
+}
+impl ClaimRecord {
+    pub const SPACE: usize = 97;
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CouponStatus {
+    Created,
+    Funded,
+    Complete,
+}
+
+#[account]
 pub struct IssuerConfig {
     pub id: [u8; 32],
     pub authority: Pubkey,
@@ -972,6 +1410,34 @@ pub enum CouponFrequency {
 pub enum Status {
     Issuing,
     IssuanceClosed,
+}
+
+#[event]
+pub struct SettlementMintConfigured {
+    pub config: Pubkey,
+    pub mint: Pubkey,
+}
+#[event]
+pub struct CouponPeriodCreated {
+    pub coupon: Pubkey,
+    pub bond: Pubkey,
+    pub snapshot: Pubkey,
+    pub period_id: u64,
+    pub coupon_per_bond_base: u64,
+    pub expected_total_base: u64,
+    pub payment_date_ts: i64,
+}
+#[event]
+pub struct CouponPeriodFunded {
+    pub coupon: Pubkey,
+    pub funded_total_base: u64,
+}
+#[event]
+pub struct CouponClaimed {
+    pub coupon: Pubkey,
+    pub holder: Pubkey,
+    pub amount_base: u64,
+    pub paid_total_base: u64,
 }
 #[event]
 pub struct IssuerInitialized {
@@ -1125,6 +1591,102 @@ pub enum ErrorCode {
     SnapshotIncomplete,
     #[msg("Lifecycle transition is invalid or repeated.")]
     InvalidTransition,
+    #[msg("Snapshot must be finalized.")]
+    SnapshotNotFinalized,
+    #[msg("Coupon references a different snapshot.")]
+    WrongSnapshot,
+    #[msg("Payment date must be on or after record date and current chain time.")]
+    InvalidPaymentDate,
+    #[msg("Settlement mint must be classic SPL with six decimals.")]
+    InvalidSettlementMint,
+    #[msg("Coupon rounds to zero settlement base units.")]
+    ZeroCoupon,
+    #[msg("Funding must exactly equal the coupon reserve.")]
+    FundingAmountMismatch,
+    #[msg("Coupon is not fully funded.")]
+    CouponNotFunded,
+    #[msg("Coupon payment date has not arrived.")]
+    PaymentNotDue,
+    #[msg("Bond account does not match coupon.")]
+    WrongBond,
+    #[msg("Snapshot entry does not establish holder eligibility.")]
+    IneligibleHolder,
+    #[msg("Settlement source token account is invalid.")]
+    InvalidSettlementAccount,
+    #[msg("Destination must be a token account owned by the holder.")]
+    InvalidDestination,
+    #[msg("Coupon reserve is insufficient.")]
+    InsufficientReserve,
+}
+
+fn check_dset_mint(mint: &UncheckedAccount) -> Result<()> {
+    require_keys_eq!(*mint.owner, spl_token::ID, ErrorCode::InvalidSettlementMint);
+    let data = SplMint::unpack(&mint.try_borrow_data()?)
+        .map_err(|_| error!(ErrorCode::InvalidSettlementMint))?;
+    require!(
+        data.decimals == DSET_DECIMALS,
+        ErrorCode::InvalidSettlementMint
+    );
+    Ok(())
+}
+fn check_token_account(
+    info: &AccountInfo<'_>,
+    mint: Pubkey,
+    owner: Pubkey,
+    error_code: ErrorCode,
+) -> Result<()> {
+    if *info.owner != spl_token::ID {
+        return Err(error!(error_code));
+    }
+    let data = SplAccount::unpack(&info.try_borrow_data()?).map_err(|_| error!(error_code))?;
+    if data.state != spl_token::state::AccountState::Initialized
+        || data.mint != mint
+        || data.owner != owner
+    {
+        return Err(error!(error_code));
+    }
+    Ok(())
+}
+fn check_coupon_escrow(
+    escrow: &UncheckedAccount,
+    coupon: &CouponPeriod,
+    outgoing: u64,
+) -> Result<()> {
+    require_keys_eq!(escrow.key(), coupon.escrow, ErrorCode::InvalidVault);
+    require_keys_eq!(*escrow.owner, spl_token::ID, ErrorCode::InvalidVault);
+    let data = SplAccount::unpack(&escrow.try_borrow_data()?)
+        .map_err(|_| error!(ErrorCode::InvalidVault))?;
+    require!(
+        data.state == spl_token::state::AccountState::Initialized,
+        ErrorCode::InvalidVault
+    );
+    require_keys_eq!(data.mint, coupon.settlement_mint, ErrorCode::InvalidVault);
+    require_keys_eq!(
+        data.owner,
+        coupon.coupon_authority,
+        ErrorCode::WrongAuthority
+    );
+    let accounted = coupon
+        .funded_total_base
+        .checked_sub(coupon.paid_total_base)
+        .ok_or(ErrorCode::Overflow)?;
+    require!(
+        data.amount == accounted && outgoing <= data.amount,
+        ErrorCode::InsufficientReserve
+    );
+    Ok(())
+}
+fn coupon_per_bond_base(bond: &Bond) -> Result<u64> {
+    let periods_per_year: u128 = match bond.frequency {
+        CouponFrequency::Semiannual => 2,
+    };
+    let numerator = u128::from(bond.face_value_base)
+        .checked_mul(u128::from(bond.annual_coupon_bps))
+        .ok_or(ErrorCode::Overflow)?;
+    let denominator = 10_000u128
+        .checked_mul(periods_per_year)
+        .ok_or(ErrorCode::Overflow)?;
+    u64::try_from(numerator / denominator).map_err(|_| error!(ErrorCode::Overflow))
 }
 
 fn read_registry_entry(info: &AccountInfo<'_>) -> Result<RegistryEntry> {
@@ -1298,6 +1860,10 @@ mod tests {
         assert_eq!(Position::SPACE, 81);
         assert_eq!(RecordDateSnapshot::SPACE, 176);
         assert_eq!(SnapshotEntry::SPACE, 176);
+        assert_eq!(SettlementConfig::SPACE, 74);
+        assert_eq!(CouponAuthority::SPACE, 41);
+        assert_eq!(CouponPeriod::SPACE, 264);
+        assert_eq!(ClaimRecord::SPACE, 97);
         assert!(Bond::SPACE >= 220);
     }
     #[test]

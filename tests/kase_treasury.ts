@@ -1,6 +1,6 @@
 import * as anchor from "@coral-xyz/anchor";
 import { AnchorProvider, BN, Program, web3 } from "@coral-xyz/anchor";
-import { getAccount, getMint, TOKEN_PROGRAM_ID } from "@solana/spl-token";
+import { createAssociatedTokenAccount, createMint, getAccount, getMint, mintTo, TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { createHash, randomBytes } from "crypto";
 import assert from "node:assert/strict";
 import { KaseTreasury } from "../target/types/kase_treasury";
@@ -289,5 +289,147 @@ describe("KASE Treasury M3 record-date snapshots", function () {
     assert.equal(afterFailure.processedHolderCount, 0);
     await snapshotBatch(f, snapshotPda, 0, 1);
     await finalizeSnapshot(f, snapshotPda);
+  });
+});
+
+
+const settlementConfigAddress=(f:F)=>addr([Buffer.from("settlement_config"),f.config.toBuffer()]);
+function couponAddress(f:F,period:number):web3.PublicKey { const b=Buffer.alloc(8); b.writeBigUInt64LE(BigInt(period)); return addr([Buffer.from("coupon"),f.bond.toBuffer(),b]); }
+function couponAuthorityAddress(coupon:web3.PublicKey):web3.PublicKey { return addr([Buffer.from("coupon_authority"),coupon.toBuffer()]); }
+function couponVaultAddress(coupon:web3.PublicKey):web3.PublicKey { return addr([Buffer.from("coupon_vault"),coupon.toBuffer()]); }
+function claimAddress(coupon:web3.PublicKey,holder:web3.PublicKey):web3.PublicKey { return addr([Buffer.from("coupon_claim"),coupon.toBuffer(),holder.toBuffer()]); }
+function settlementPayer():web3.Keypair { return (provider.wallet as any).payer as web3.Keypair; }
+async function waitTokenAmount(address:web3.PublicKey,expected:bigint):Promise<Awaited<ReturnType<typeof getAccount>>> {
+  let last=await getAccount(provider.connection,address,"confirmed",TOKEN_PROGRAM_ID);
+  for(let retry=0;last.amount!==expected && retry<20;retry++) {
+    await new Promise(resolve=>setTimeout(resolve,250));
+    last=await getAccount(provider.connection,address,"confirmed",TOKEN_PROGRAM_ID);
+  }
+  return last;
+}
+async function makeAta(mint:web3.PublicKey,owner:web3.PublicKey):Promise<web3.PublicKey> {
+  return createAssociatedTokenAccount(provider.connection,settlementPayer(),mint,owner,{commitment:"confirmed"},TOKEN_PROGRAM_ID);
+}
+async function makeDset(f:F):Promise<{mint:web3.PublicKey; source:web3.PublicKey; mintAuthority:web3.Keypair}> {
+  const mintAuthority=web3.Keypair.generate();
+  const mint=await createMint(provider.connection,settlementPayer(),mintAuthority.publicKey,null,6,undefined,undefined,TOKEN_PROGRAM_ID);
+  const source=await makeAta(mint,provider.wallet.publicKey);
+  await mintTo(provider.connection,settlementPayer(),mint,source,mintAuthority,850_000_000n,[],undefined,TOKEN_PROGRAM_ID);
+  await program.methods.configureSettlementMint().accountsStrict({
+    config:f.config,authority:provider.wallet.publicKey,settlementConfig:settlementConfigAddress(f),
+    settlementMint:mint,tokenProgram:TOKEN_PROGRAM_ID,systemProgram:SystemProgram.programId,
+  }).rpc();
+  return {mint,source,mintAuthority};
+}
+async function makeFinalizedSnapshot(f:F,holders:web3.Keypair[]):Promise<{snapshot:web3.PublicKey;recordDate:number}> {
+  await closeIssuance(f);
+  const recordDate=(await clockUnix())+2;
+  const snapshot=await createSnapshot(f,bytes(),recordDate);
+  const deadline=Date.now()+30_000;
+  while(await clockUnix()<recordDate && Date.now()<deadline) await new Promise(resolve=>setTimeout(resolve,250));
+  assert.ok((await clockUnix())>=recordDate);
+  await snapshotBatch(f,snapshot,0,holders.length);
+  await finalizeSnapshot(f,snapshot);
+  return {snapshot,recordDate};
+}
+function createCouponAccounts(f:F,snapshot:web3.PublicKey,mint:web3.PublicKey,period:number,recordDate:number,paymentDate:number,overrides:Record<string,web3.PublicKey>={}):any {
+  const coupon=couponAddress(f,period);
+  return {coupon,accounts:{
+    config:f.config,authority:provider.wallet.publicKey,bond:overrides.bond??f.bond,snapshot:overrides.snapshot??snapshot,
+    settlementConfig:settlementConfigAddress(f),settlementMint:overrides.settlementMint??mint,coupon,
+    couponAuthority:couponAuthorityAddress(coupon),escrow:couponVaultAddress(coupon),tokenProgram:TOKEN_PROGRAM_ID,
+    systemProgram:SystemProgram.programId,rent:SYSVAR_RENT_PUBKEY,
+  }};
+}
+function fundAccounts(f:F,mint:web3.PublicKey,source:web3.PublicKey,period:number,overrides:Record<string,web3.PublicKey>={}):any {
+  const coupon=couponAddress(f,period);
+  return {config:f.config,authority:overrides.authority??provider.wallet.publicKey,bond:overrides.bond??f.bond,coupon,
+    settlementConfig:settlementConfigAddress(f),settlementMint:overrides.settlementMint??mint,source:overrides.source??source,
+    escrow:couponVaultAddress(coupon),tokenProgram:TOKEN_PROGRAM_ID};
+}
+function claimAccounts(f:F,snapshot:web3.PublicKey,mint:web3.PublicKey,holder:web3.Keypair,period:number,destination:web3.PublicKey,overrides:Record<string,web3.PublicKey>={}):any {
+  const coupon=couponAddress(f,period);
+  return {config:f.config,bond:overrides.bond??f.bond,coupon,snapshot:overrides.snapshot??snapshot,holder:holder.publicKey,
+    snapshotEntry:overrides.snapshotEntry??snapshotEntryAddress(snapshot,holder.publicKey),settlementConfig:settlementConfigAddress(f),
+    settlementMint:overrides.settlementMint??mint,couponAuthority:couponAuthorityAddress(coupon),escrow:couponVaultAddress(coupon),
+    destination,claimRecord:claimAddress(coupon,holder.publicKey),payer:provider.wallet.publicKey,tokenProgram:TOKEN_PROGRAM_ID,
+    systemProgram:SystemProgram.programId,rent:SYSVAR_RENT_PUBKEY};
+}
+
+describe("KASE Treasury M4 coupon settlement",function(){
+  this.timeout(1_000_000);
+  it("funds the complete coupon reserve and pays immutable snapshot entitlements once",async()=>{
+    const f=await make(100);
+    const holders=[await register(f,web3.Keypair.generate(),10),await register(f,web3.Keypair.generate(),5),await register(f,web3.Keypair.generate(),2)];
+    const {snapshot,recordDate}=await makeFinalizedSnapshot(f,holders);
+    const {mint,source}=await makeDset(f);
+    const paymentDate=(await clockUnix())+3;
+    const period=7001;
+    const prepared=createCouponAccounts(f,snapshot,mint,period,recordDate,paymentDate);
+    await program.methods.createCouponPeriod(new BN(period),new BN(recordDate),new BN(paymentDate)).accountsStrict(prepared.accounts).rpc();
+    const coupon=await program.account.couponPeriod.fetch(prepared.coupon);
+    assert.equal(coupon.couponPerBondBase.toString(),"50000000");
+    assert.equal(coupon.expectedTotalBase.toString(),"850000000");
+    assert.equal(coupon.fundedTotalBase.toString(),"0");
+    await fails(program.methods.createCouponPeriod(new BN(period),new BN(recordDate),new BN(paymentDate)).accountsStrict(prepared.accounts).rpc(),"duplicate bond-period event");
+    const unconfiguredMint=await createMint(provider.connection,settlementPayer(),web3.Keypair.generate().publicKey,null,9,undefined,undefined,TOKEN_PROGRAM_ID);
+    await fails(program.methods.configureSettlementMint().accountsStrict({config:f.config,authority:provider.wallet.publicKey,settlementConfig:settlementConfigAddress(f),settlementMint:unconfiguredMint,tokenProgram:TOKEN_PROGRAM_ID,systemProgram:SystemProgram.programId}).rpc(),"second/invalid settlement configuration");
+    const outsider=web3.Keypair.generate();
+    await fails(program.methods.fundCouponPeriod(new BN(850_000_000)).accountsStrict(fundAccounts(f,mint,source,period,{authority:outsider.publicKey})).signers([outsider]).rpc(),"unauthorized issuer funding");
+    await fails(program.methods.fundCouponPeriod(new BN(849_999_999)).accountsStrict(fundAccounts(f,mint,source,period)).rpc(),"partial reserve funding");
+    const wrongMint=await createMint(provider.connection,settlementPayer(),web3.Keypair.generate().publicKey,null,6,undefined,undefined,TOKEN_PROGRAM_ID);
+    await fails(program.methods.fundCouponPeriod(new BN(850_000_000)).accountsStrict(fundAccounts(f,mint,source,period,{settlementMint:wrongMint})).rpc(),"wrong funding mint");
+    await fails(program.methods.fundCouponPeriod(new BN(850_000_000)).accountsStrict(fundAccounts(f,mint,source,period,{bond:web3.Keypair.generate().publicKey})).rpc(),"wrong bond funding");
+    const before=await getAccount(provider.connection,source,"confirmed",TOKEN_PROGRAM_ID);
+    assert.equal(before.amount,850_000_000n);
+    await program.methods.fundCouponPeriod(new BN(850_000_000)).accountsStrict(fundAccounts(f,mint,source,period)).rpc();
+    const after=await waitTokenAmount(source,0n);
+    assert.equal(after.amount,0n);
+    const funded=await getAccount(provider.connection,couponVaultAddress(prepared.coupon),"confirmed",TOKEN_PROGRAM_ID);
+    assert.equal(funded.amount,850_000_000n);
+
+    const wrongDest=await makeAta(mint,web3.Keypair.generate().publicKey);
+    await fails(program.methods.claimCoupon().accountsStrict(claimAccounts(f,snapshot,mint,holders[0],period,wrongDest)).signers([holders[0]]).rpc(),"destination owned by a different investor");
+    const wrongMintDest=await makeAta(wrongMint,holders[0].publicKey);
+    await fails(program.methods.claimCoupon().accountsStrict(claimAccounts(f,snapshot,mint,holders[0],period,wrongMintDest)).signers([holders[0]]).rpc(),"wrong destination mint");
+    const wrongInvestor=holders[1];
+    await fails(program.methods.claimCoupon().accountsStrict(claimAccounts(f,snapshot,mint,wrongInvestor,period,wrongDest,{snapshotEntry:snapshotEntryAddress(snapshot,holders[0].publicKey)})).signers([wrongInvestor]).rpc(),"snapshot entry belongs to another holder");
+    const otherBond=await make(10);
+    await fails(program.methods.claimCoupon().accountsStrict(claimAccounts(f,snapshot,mint,holders[0],period,wrongDest,{bond:otherBond.bond})).signers([holders[0]]).rpc(),"wrong claim bond");
+    await fails(program.methods.claimCoupon().accountsStrict(claimAccounts(f,snapshot,mint,holders[0],period,wrongDest,{snapshot:web3.Keypair.generate().publicKey})).signers([holders[0]]).rpc(),"wrong claim snapshot");
+
+    const payAt=Date.now()+30_000;
+    while(await clockUnix()<paymentDate && Date.now()<payAt) await new Promise(resolve=>setTimeout(resolve,250));
+    assert.ok((await clockUnix())>=paymentDate,"coupon payment date reached");
+    const destinations:web3.PublicKey[]=[];
+    for(const holder of holders) destinations.push(await makeAta(mint,holder.publicKey));
+    for(let i=0;i<holders.length;i++) await program.methods.claimCoupon().accountsStrict(claimAccounts(f,snapshot,mint,holders[i],period,destinations[i])).signers([holders[i]]).rpc();
+    const paid=await Promise.all(destinations.map(d=>waitTokenAmount(d,[500_000_000n,250_000_000n,100_000_000n][destinations.indexOf(d)])));
+    assert.deepEqual(paid.map(a=>a.amount),[500_000_000n,250_000_000n,100_000_000n]);
+    await fails(program.methods.claimCoupon().accountsStrict(claimAccounts(f,snapshot,mint,holders[0],period,destinations[0])).signers([holders[0]]).rpc(),"duplicate coupon claim");
+    const final=await program.account.couponPeriod.fetch(prepared.coupon);
+    assert.equal(final.paidTotalBase.toString(),"850000000");
+    assert.equal(final.claimCount,3);
+    assert.ok(final.status.complete!==undefined);
+    const empty=await getAccount(provider.connection,couponVaultAddress(prepared.coupon),"confirmed",TOKEN_PROGRAM_ID);
+    assert.equal(empty.amount,0n);
+  });
+
+  it("rejects invalid settlement mint decimals and claims before full funding",async()=>{
+    const f=await make(10);
+    const h=await register(f,web3.Keypair.generate(),1);
+    const {snapshot,recordDate}=await makeFinalizedSnapshot(f,[h]);
+    const badMint=await createMint(provider.connection,settlementPayer(),web3.Keypair.generate().publicKey,null,9,undefined,undefined,TOKEN_PROGRAM_ID);
+    await fails(program.methods.configureSettlementMint().accountsStrict({config:f.config,authority:provider.wallet.publicKey,settlementConfig:settlementConfigAddress(f),settlementMint:badMint,tokenProgram:TOKEN_PROGRAM_ID,systemProgram:SystemProgram.programId}).rpc(),"non-six-decimal settlement mint");
+    const {mint,source}=await makeDset(f);
+    const payment=(await clockUnix())+30;
+    const period=7002;
+    const prep=createCouponAccounts(f,snapshot,mint,period,recordDate,payment);
+    await program.methods.createCouponPeriod(new BN(period),new BN(recordDate),new BN(payment)).accountsStrict(prep.accounts).rpc();
+    const destination=await makeAta(mint,h.publicKey);
+    await fails(program.methods.claimCoupon().accountsStrict(claimAccounts(f,snapshot,mint,h,period,destination)).signers([h]).rpc(),"claim before reserve funding");
+    await program.methods.fundCouponPeriod(new BN(50_000_000)).accountsStrict(fundAccounts(f,mint,source,period)).rpc();
+    await fails(program.methods.claimCoupon().accountsStrict(claimAccounts(f,snapshot,mint,h,period,destination)).signers([h]).rpc(),"claim before payment date");
+    await fails(program.methods.createCouponPeriod(new BN(period+1),new BN(recordDate),new BN(payment)).accountsStrict({...prep.accounts,coupon:couponAddress(f,period+1)}).rpc(),"invalid snapshot identity");
   });
 });

@@ -25,6 +25,10 @@ pub const COUPON: &[u8] = b"coupon";
 pub const COUPON_AUTHORITY: &[u8] = b"coupon_authority";
 pub const COUPON_VAULT: &[u8] = b"coupon_vault";
 pub const CLAIM: &[u8] = b"coupon_claim";
+pub const REDEMPTION: &[u8] = b"redemption";
+pub const REDEMPTION_AUTHORITY: &[u8] = b"redemption_authority";
+pub const REDEMPTION_VAULT: &[u8] = b"redemption_vault";
+pub const REDEMPTION_CLAIM: &[u8] = b"redemption_claim";
 pub const DSET_DECIMALS: u8 = 6;
 pub const MAX_HOLDERS: usize = 100;
 pub const MAX_SNAPSHOT_BATCH: u8 = 5;
@@ -835,7 +839,10 @@ pub mod kase_treasury {
         );
         require!(
             ctx.accounts.bond.key() == coupon.bond
-                && ctx.accounts.bond.status == Status::IssuanceClosed,
+                && matches!(
+                    ctx.accounts.bond.status,
+                    Status::IssuanceClosed | Status::Redeemed
+                ),
             ErrorCode::WrongBond
         );
         require!(
@@ -918,6 +925,478 @@ pub mod kase_treasury {
         });
         Ok(())
     }
+
+    pub fn create_redemption(ctx: Context<CreateRedemption>) -> Result<()> {
+        let now = Clock::get()?;
+        require!(
+            ctx.accounts.bond.status == Status::IssuanceClosed,
+            ErrorCode::IssuanceNotClosed
+        );
+        require!(
+            now.unix_timestamp >= ctx.accounts.bond.maturity_ts,
+            ErrorCode::BondNotMatured
+        );
+        require!(
+            ctx.accounts.snapshot.status == SnapshotStatus::Finalized
+                && ctx.accounts.snapshot.bond == ctx.accounts.bond.key(),
+            ErrorCode::WrongSnapshot
+        );
+        require!(
+            ctx.accounts.snapshot.total_units > 0
+                && ctx.accounts.snapshot.expected_holder_count > 0
+                && ctx.accounts.snapshot.total_units == ctx.accounts.bond.outstanding
+                && ctx.accounts.registry.total_units == ctx.accounts.snapshot.total_units
+                && ctx.accounts.registry.count == ctx.accounts.snapshot.expected_holder_count,
+            ErrorCode::SnapshotTotalMismatch
+        );
+        check_closed_supply(
+            &ctx.accounts.bond,
+            &ctx.accounts.registry,
+            &ctx.accounts.mint,
+            &ctx.accounts.vault,
+        )?;
+        require!(
+            ctx.accounts.settlement_config.config == ctx.accounts.config.key()
+                && ctx.accounts.settlement_config.mint == ctx.accounts.settlement_mint.key()
+                && ctx.accounts.settlement_config.decimals == DSET_DECIMALS,
+            ErrorCode::InvalidSettlementMint
+        );
+        check_dset_mint(&ctx.accounts.settlement_mint)?;
+        let required = principal_total_base(
+            ctx.accounts.snapshot.total_units,
+            ctx.accounts.bond.face_value_base,
+        )?;
+        require!(required > 0, ErrorCode::ZeroAmount);
+        let init = spl_token::instruction::initialize_account3(
+            &spl_token::ID,
+            &ctx.accounts.escrow.key(),
+            &ctx.accounts.settlement_mint.key(),
+            &ctx.accounts.redemption_authority.key(),
+        )?;
+        invoke(
+            &init,
+            &[
+                ctx.accounts.escrow.to_account_info(),
+                ctx.accounts.settlement_mint.to_account_info(),
+                ctx.accounts.token_program.to_account_info(),
+            ],
+        )?;
+        let redemption = &mut ctx.accounts.redemption;
+        redemption.bond = ctx.accounts.bond.key();
+        redemption.snapshot = ctx.accounts.snapshot.key();
+        redemption.settlement_mint = ctx.accounts.settlement_mint.key();
+        redemption.escrow = ctx.accounts.escrow.key();
+        redemption.redemption_authority = ctx.accounts.redemption_authority.key();
+        redemption.issuer = ctx.accounts.authority.key();
+        redemption.face_value_base = ctx.accounts.bond.face_value_base;
+        redemption.snapshot_total_units = ctx.accounts.snapshot.total_units;
+        redemption.expected_holder_count = ctx.accounts.snapshot.expected_holder_count;
+        redemption.required_total_base = required;
+        redemption.funded_total_base = 0;
+        redemption.paid_total_base = 0;
+        redemption.burned_units = 0;
+        redemption.maturity_ts = ctx.accounts.bond.maturity_ts;
+        redemption.created_at_ts = now.unix_timestamp;
+        redemption.created_slot = now.slot;
+        redemption.activated_at_ts = 0;
+        redemption.activated_slot = 0;
+        redemption.claim_count = 0;
+        redemption.status = RedemptionStatus::Created;
+        redemption.bump = ctx.bumps.redemption;
+        ctx.accounts.redemption_authority.redemption = redemption.key();
+        ctx.accounts.redemption_authority.bump = ctx.bumps.redemption_authority;
+        emit!(RedemptionCreated {
+            redemption: redemption.key(),
+            bond: redemption.bond,
+            snapshot: redemption.snapshot,
+            required_total_base: required,
+            snapshot_total_units: redemption.snapshot_total_units,
+            maturity_ts: redemption.maturity_ts,
+        });
+        Ok(())
+    }
+
+    pub fn fund_redemption(ctx: Context<FundRedemption>, amount: u64) -> Result<()> {
+        let redemption = &ctx.accounts.redemption;
+        require!(
+            redemption.status == RedemptionStatus::Created,
+            ErrorCode::InvalidTransition
+        );
+        require!(
+            Clock::get()?.unix_timestamp >= redemption.maturity_ts,
+            ErrorCode::BondNotMatured
+        );
+        require!(
+            amount == redemption.required_total_base && amount > 0,
+            ErrorCode::FundingAmountMismatch
+        );
+        require!(
+            redemption.bond == ctx.accounts.bond.key()
+                && redemption.settlement_mint == ctx.accounts.settlement_mint.key(),
+            ErrorCode::WrongBond
+        );
+        require!(
+            ctx.accounts.settlement_config.config == ctx.accounts.config.key()
+                && ctx.accounts.settlement_config.mint == redemption.settlement_mint,
+            ErrorCode::InvalidSettlementMint
+        );
+        check_dset_mint(&ctx.accounts.settlement_mint)?;
+        check_token_account(
+            &ctx.accounts.source.to_account_info(),
+            redemption.settlement_mint,
+            ctx.accounts.authority.key(),
+            ErrorCode::InvalidSettlementAccount,
+        )?;
+        check_redemption_escrow(&ctx.accounts.escrow, redemption, 0)?;
+        let transfer = spl_token::instruction::transfer(
+            &spl_token::ID,
+            &ctx.accounts.source.key(),
+            &ctx.accounts.escrow.key(),
+            &ctx.accounts.authority.key(),
+            &[],
+            amount,
+        )?;
+        invoke(
+            &transfer,
+            &[
+                ctx.accounts.source.to_account_info(),
+                ctx.accounts.escrow.to_account_info(),
+                ctx.accounts.authority.to_account_info(),
+                ctx.accounts.token_program.to_account_info(),
+            ],
+        )?;
+        let redemption = &mut ctx.accounts.redemption;
+        redemption.funded_total_base = amount;
+        redemption.status = RedemptionStatus::Funded;
+        check_redemption_escrow(&ctx.accounts.escrow, redemption, 0)?;
+        emit!(RedemptionFunded {
+            redemption: redemption.key(),
+            funded_total_base: amount
+        });
+        Ok(())
+    }
+
+    pub fn activate_redemption(ctx: Context<ActivateRedemption>) -> Result<()> {
+        let now = Clock::get()?;
+        let redemption = &ctx.accounts.redemption;
+        require!(
+            redemption.status == RedemptionStatus::Funded,
+            ErrorCode::RedemptionNotFunded
+        );
+        require!(
+            now.unix_timestamp >= redemption.maturity_ts,
+            ErrorCode::BondNotMatured
+        );
+        require!(
+            ctx.accounts.bond.status == Status::IssuanceClosed
+                && redemption.bond == ctx.accounts.bond.key()
+                && redemption.snapshot == ctx.accounts.snapshot.key()
+                && ctx.accounts.snapshot.status == SnapshotStatus::Finalized
+                && ctx.accounts.snapshot.bond == ctx.accounts.bond.key()
+                && ctx.accounts.snapshot.total_units == redemption.snapshot_total_units,
+            ErrorCode::WrongSnapshot
+        );
+        require!(
+            ctx.accounts.registry.total_units == redemption.snapshot_total_units
+                && ctx.accounts.registry.count == redemption.expected_holder_count
+                && ctx.accounts.bond.outstanding == redemption.snapshot_total_units,
+            ErrorCode::SnapshotTotalMismatch
+        );
+        check_closed_supply(
+            &ctx.accounts.bond,
+            &ctx.accounts.registry,
+            &ctx.accounts.mint,
+            &ctx.accounts.vault,
+        )?;
+        require!(
+            redemption.funded_total_base == redemption.required_total_base
+                && redemption.paid_total_base == 0,
+            ErrorCode::InsufficientReserve
+        );
+        check_redemption_escrow(&ctx.accounts.escrow, redemption, 0)?;
+        let bond_key = ctx.accounts.bond.key();
+        let bump = [ctx.accounts.bond.authority_bump];
+        let seeds: &[&[u8]] = &[AUTH, bond_key.as_ref(), &bump];
+        let burn = spl_token::instruction::burn(
+            &spl_token::ID,
+            &ctx.accounts.vault.key(),
+            &ctx.accounts.mint.key(),
+            &ctx.accounts.bond_authority.key(),
+            &[],
+            redemption.snapshot_total_units,
+        )?;
+        invoke_signed(
+            &burn,
+            &[
+                ctx.accounts.vault.to_account_info(),
+                ctx.accounts.mint.to_account_info(),
+                ctx.accounts.bond_authority.to_account_info(),
+                ctx.accounts.token_program.to_account_info(),
+            ],
+            &[seeds],
+        )?;
+        let mint = SplMint::unpack(&ctx.accounts.mint.try_borrow_data()?)
+            .map_err(|_| error!(ErrorCode::InvalidMint))?;
+        let vault = SplAccount::unpack(&ctx.accounts.vault.try_borrow_data()?)
+            .map_err(|_| error!(ErrorCode::InvalidVault))?;
+        require!(
+            mint.supply == 0 && vault.amount == 0,
+            ErrorCode::SupplyMismatch
+        );
+        let bond = &mut ctx.accounts.bond;
+        bond.outstanding = 0;
+        bond.status = Status::Redeemed;
+        let redemption = &mut ctx.accounts.redemption;
+        redemption.burned_units = redemption.snapshot_total_units;
+        redemption.activated_at_ts = now.unix_timestamp;
+        redemption.activated_slot = now.slot;
+        redemption.status = RedemptionStatus::Activated;
+        emit!(RedemptionActivated {
+            redemption: redemption.key(),
+            bond: bond_key,
+            burned_units: redemption.burned_units,
+            activated_at_ts: redemption.activated_at_ts,
+            activated_slot: redemption.activated_slot,
+        });
+        Ok(())
+    }
+
+    pub fn claim_redemption(ctx: Context<ClaimRedemption>) -> Result<()> {
+        let now = Clock::get()?;
+        let redemption = &ctx.accounts.redemption;
+        require!(
+            redemption.status == RedemptionStatus::Activated,
+            ErrorCode::RedemptionNotActive
+        );
+        require!(
+            now.unix_timestamp >= redemption.maturity_ts,
+            ErrorCode::BondNotMatured
+        );
+        require!(
+            ctx.accounts.bond.status == Status::Redeemed
+                && redemption.bond == ctx.accounts.bond.key(),
+            ErrorCode::WrongBond
+        );
+        require!(
+            ctx.accounts.snapshot.key() == redemption.snapshot
+                && ctx.accounts.snapshot.status == SnapshotStatus::Finalized
+                && ctx.accounts.snapshot.bond == redemption.bond
+                && ctx.accounts.snapshot.total_units == redemption.snapshot_total_units,
+            ErrorCode::WrongSnapshot
+        );
+        require!(
+            ctx.accounts.snapshot_entry.snapshot == redemption.snapshot
+                && ctx.accounts.snapshot_entry.bond == redemption.bond
+                && ctx.accounts.snapshot_entry.holder == ctx.accounts.holder.key()
+                && ctx.accounts.snapshot_entry.units > 0,
+            ErrorCode::IneligibleHolder
+        );
+        require!(
+            ctx.accounts.settlement_config.config == ctx.accounts.config.key()
+                && ctx.accounts.settlement_config.mint == redemption.settlement_mint,
+            ErrorCode::InvalidSettlementMint
+        );
+        check_dset_mint(&ctx.accounts.settlement_mint)?;
+        check_token_account(
+            &ctx.accounts.destination.to_account_info(),
+            redemption.settlement_mint,
+            ctx.accounts.holder.key(),
+            ErrorCode::InvalidDestination,
+        )?;
+        let amount = principal_total_base(
+            ctx.accounts.snapshot_entry.units,
+            redemption.face_value_base,
+        )?;
+        require!(amount > 0, ErrorCode::ZeroAmount);
+        let paid = redemption
+            .paid_total_base
+            .checked_add(amount)
+            .ok_or(ErrorCode::Overflow)?;
+        require!(
+            paid <= redemption.funded_total_base && paid <= redemption.required_total_base,
+            ErrorCode::InsufficientReserve
+        );
+        check_redemption_escrow(&ctx.accounts.escrow, redemption, amount)?;
+        let bump = [ctx.accounts.redemption_authority.bump];
+        let key = redemption.key();
+        let seeds: &[&[u8]] = &[REDEMPTION_AUTHORITY, key.as_ref(), &bump];
+        let transfer = spl_token::instruction::transfer(
+            &spl_token::ID,
+            &ctx.accounts.escrow.key(),
+            &ctx.accounts.destination.key(),
+            &ctx.accounts.redemption_authority.key(),
+            &[],
+            amount,
+        )?;
+        invoke_signed(
+            &transfer,
+            &[
+                ctx.accounts.escrow.to_account_info(),
+                ctx.accounts.destination.to_account_info(),
+                ctx.accounts.redemption_authority.to_account_info(),
+                ctx.accounts.token_program.to_account_info(),
+            ],
+            &[seeds],
+        )?;
+        let receipt = &mut ctx.accounts.receipt;
+        receipt.redemption = key;
+        receipt.holder = ctx.accounts.holder.key();
+        receipt.amount_base = amount;
+        receipt.paid_at_ts = now.unix_timestamp;
+        receipt.paid_slot = now.slot;
+        receipt.bump = ctx.bumps.receipt;
+        let redemption = &mut ctx.accounts.redemption;
+        redemption.paid_total_base = paid;
+        redemption.claim_count = redemption
+            .claim_count
+            .checked_add(1)
+            .ok_or(ErrorCode::Overflow)?;
+        if paid == redemption.required_total_base {
+            require!(
+                redemption.claim_count == redemption.expected_holder_count,
+                ErrorCode::SnapshotCountMismatch
+            );
+            redemption.status = RedemptionStatus::Complete;
+        }
+        check_redemption_escrow(&ctx.accounts.escrow, redemption, 0)?;
+        emit!(RedemptionClaimed {
+            redemption: key,
+            holder: receipt.holder,
+            amount_base: amount,
+            paid_total_base: paid
+        });
+        Ok(())
+    }
+}
+
+#[derive(Accounts)]
+pub struct CreateRedemption<'info> {
+    #[account(seeds=[ISSUER, config.id.as_ref()], bump=config.bump, has_one=authority)]
+    pub config: Account<'info, IssuerConfig>,
+    #[account(mut)]
+    pub authority: Signer<'info>,
+    #[account(seeds=[BOND, config.key().as_ref(), bond.id.as_ref()], bump=bond.bump, has_one=config, has_one=mint, has_one=vault, has_one=bond_authority)]
+    pub bond: Account<'info, Bond>,
+    #[account(seeds=[REGISTRY, bond.key().as_ref()], bump=bond.registry_bump, has_one=bond)]
+    pub registry: Account<'info, RegistryState>,
+    #[account(seeds=[SNAPSHOT, bond.key().as_ref(), snapshot.snapshot_id.as_ref()], bump=snapshot.bump, has_one=bond)]
+    pub snapshot: Account<'info, RecordDateSnapshot>,
+    #[account(seeds=[SETTLEMENT_CONFIG, config.key().as_ref()], bump=settlement_config.bump, has_one=config)]
+    pub settlement_config: Account<'info, SettlementConfig>,
+    #[account(address=settlement_config.mint)]
+    /// CHECK: validated configured classic SPL settlement mint.
+    pub settlement_mint: UncheckedAccount<'info>,
+    #[account(init, payer=authority, space=Redemption::SPACE, seeds=[REDEMPTION, bond.key().as_ref()], bump)]
+    pub redemption: Account<'info, Redemption>,
+    #[account(init, payer=authority, space=RedemptionAuthority::SPACE, seeds=[REDEMPTION_AUTHORITY, redemption.key().as_ref()], bump)]
+    pub redemption_authority: Account<'info, RedemptionAuthority>,
+    #[account(init, payer=authority, owner=spl_token::ID, space=SplAccount::LEN, seeds=[REDEMPTION_VAULT, redemption.key().as_ref()], bump)]
+    /// CHECK: initialized as isolated escrow controlled by RedemptionAuthority.
+    pub escrow: UncheckedAccount<'info>,
+    #[account(seeds=[AUTH, bond.key().as_ref()], bump=bond.authority_bump, constraint=bond_authority.bond == bond.key() @ ErrorCode::WrongAuthority)]
+    pub bond_authority: Account<'info, BondAuthority>,
+    #[account(address=bond.mint)]
+    /// CHECK: closed bond mint verified before redemption creation.
+    pub mint: UncheckedAccount<'info>,
+    #[account(address=bond.vault)]
+    /// CHECK: custody vault verified before redemption creation.
+    pub vault: UncheckedAccount<'info>,
+    #[account(address=spl_token::ID)]
+    /// CHECK: canonical classic SPL Token Program.
+    pub token_program: UncheckedAccount<'info>,
+    pub system_program: Program<'info, System>,
+    pub rent: Sysvar<'info, Rent>,
+}
+
+#[derive(Accounts)]
+pub struct FundRedemption<'info> {
+    #[account(seeds=[ISSUER, config.id.as_ref()], bump=config.bump, has_one=authority)]
+    pub config: Account<'info, IssuerConfig>,
+    #[account(mut)]
+    pub authority: Signer<'info>,
+    #[account(seeds=[BOND, bond.config.as_ref(), bond.id.as_ref()], bump=bond.bump, has_one=config)]
+    pub bond: Account<'info, Bond>,
+    #[account(mut, seeds=[REDEMPTION, bond.key().as_ref()], bump=redemption.bump, has_one=bond)]
+    pub redemption: Account<'info, Redemption>,
+    #[account(seeds=[SETTLEMENT_CONFIG, config.key().as_ref()], bump=settlement_config.bump, has_one=config)]
+    pub settlement_config: Account<'info, SettlementConfig>,
+    #[account(address=redemption.settlement_mint)]
+    /// CHECK: validated registered settlement mint.
+    pub settlement_mint: UncheckedAccount<'info>,
+    #[account(mut)]
+    /// CHECK: validated token account owned by current issuer.
+    pub source: UncheckedAccount<'info>,
+    #[account(mut, address=redemption.escrow)]
+    /// CHECK: validated isolated redemption escrow.
+    pub escrow: UncheckedAccount<'info>,
+    #[account(address=spl_token::ID)]
+    /// CHECK: canonical classic SPL Token Program.
+    pub token_program: UncheckedAccount<'info>,
+}
+
+#[derive(Accounts)]
+pub struct ActivateRedemption<'info> {
+    #[account(mut, seeds=[REDEMPTION, bond.key().as_ref()], bump=redemption.bump, has_one=bond)]
+    pub redemption: Account<'info, Redemption>,
+    #[account(mut, seeds=[BOND, bond.config.as_ref(), bond.id.as_ref()], bump=bond.bump, has_one=mint, has_one=vault, has_one=bond_authority)]
+    pub bond: Account<'info, Bond>,
+    #[account(seeds=[SNAPSHOT, bond.key().as_ref(), snapshot.snapshot_id.as_ref()], bump=snapshot.bump, has_one=bond)]
+    pub snapshot: Account<'info, RecordDateSnapshot>,
+    #[account(seeds=[REGISTRY, bond.key().as_ref()], bump=bond.registry_bump, has_one=bond)]
+    pub registry: Account<'info, RegistryState>,
+    #[account(seeds=[AUTH, bond.key().as_ref()], bump=bond.authority_bump, constraint=bond_authority.bond == bond.key() @ ErrorCode::WrongAuthority)]
+    pub bond_authority: Account<'info, BondAuthority>,
+    #[account(mut, address=bond.mint)]
+    /// CHECK: validated classic SPL mint to burn on activation.
+    pub mint: UncheckedAccount<'info>,
+    #[account(mut, address=bond.vault)]
+    /// CHECK: validated custody vault to burn on activation.
+    pub vault: UncheckedAccount<'info>,
+    #[account(mut, address=redemption.escrow)]
+    /// CHECK: exact reserve is verified before burn CPI.
+    pub escrow: UncheckedAccount<'info>,
+    #[account(address=spl_token::ID)]
+    /// CHECK: canonical classic SPL Token Program.
+    pub token_program: UncheckedAccount<'info>,
+    pub activator: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct ClaimRedemption<'info> {
+    #[account(seeds=[ISSUER, config.id.as_ref()], bump=config.bump)]
+    pub config: Account<'info, IssuerConfig>,
+    #[account(seeds=[BOND, bond.config.as_ref(), bond.id.as_ref()], bump=bond.bump, has_one=config)]
+    pub bond: Account<'info, Bond>,
+    #[account(mut, seeds=[REDEMPTION, bond.key().as_ref()], bump=redemption.bump, has_one=bond)]
+    pub redemption: Account<'info, Redemption>,
+    #[account(seeds=[SNAPSHOT, bond.key().as_ref(), snapshot.snapshot_id.as_ref()], bump=snapshot.bump, has_one=bond)]
+    pub snapshot: Account<'info, RecordDateSnapshot>,
+    #[account(mut)]
+    pub holder: Signer<'info>,
+    #[account(seeds=[SNAPSHOT_ENTRY, snapshot.key().as_ref(), holder.key().as_ref()], bump=snapshot_entry.bump)]
+    pub snapshot_entry: Account<'info, SnapshotEntry>,
+    #[account(seeds=[SETTLEMENT_CONFIG, config.key().as_ref()], bump=settlement_config.bump, has_one=config)]
+    pub settlement_config: Account<'info, SettlementConfig>,
+    #[account(address=redemption.settlement_mint)]
+    /// CHECK: validated configured classic SPL mint.
+    pub settlement_mint: UncheckedAccount<'info>,
+    #[account(seeds=[REDEMPTION_AUTHORITY, redemption.key().as_ref()], bump=redemption_authority.bump, constraint=redemption_authority.redemption == redemption.key() @ ErrorCode::WrongAuthority)]
+    pub redemption_authority: Account<'info, RedemptionAuthority>,
+    #[account(mut, address=redemption.escrow)]
+    /// CHECK: validated event escrow and accounting.
+    pub escrow: UncheckedAccount<'info>,
+    #[account(mut)]
+    /// CHECK: validated as settlement token account owned by holder.
+    pub destination: UncheckedAccount<'info>,
+    #[account(init, payer=payer, space=RedemptionReceipt::SPACE, seeds=[REDEMPTION_CLAIM, redemption.key().as_ref(), holder.key().as_ref()], bump)]
+    pub receipt: Account<'info, RedemptionReceipt>,
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    #[account(address=spl_token::ID)]
+    /// CHECK: canonical classic SPL Token Program.
+    pub token_program: UncheckedAccount<'info>,
+    pub system_program: Program<'info, System>,
+    pub rent: Sysvar<'info, Rent>,
 }
 
 #[derive(Accounts)]
@@ -1285,6 +1764,64 @@ pub enum CouponStatus {
 }
 
 #[account]
+pub struct RedemptionAuthority {
+    pub redemption: Pubkey,
+    pub bump: u8,
+}
+impl RedemptionAuthority {
+    pub const SPACE: usize = 41;
+}
+
+#[account]
+pub struct Redemption {
+    pub bond: Pubkey,
+    pub snapshot: Pubkey,
+    pub settlement_mint: Pubkey,
+    pub escrow: Pubkey,
+    pub redemption_authority: Pubkey,
+    pub issuer: Pubkey,
+    pub face_value_base: u64,
+    pub snapshot_total_units: u64,
+    pub expected_holder_count: u8,
+    pub required_total_base: u64,
+    pub funded_total_base: u64,
+    pub paid_total_base: u64,
+    pub burned_units: u64,
+    pub maturity_ts: i64,
+    pub created_at_ts: i64,
+    pub created_slot: u64,
+    pub activated_at_ts: i64,
+    pub activated_slot: u64,
+    pub claim_count: u8,
+    pub status: RedemptionStatus,
+    pub bump: u8,
+}
+impl Redemption {
+    pub const SPACE: usize = 300;
+}
+
+#[account]
+pub struct RedemptionReceipt {
+    pub redemption: Pubkey,
+    pub holder: Pubkey,
+    pub amount_base: u64,
+    pub paid_at_ts: i64,
+    pub paid_slot: u64,
+    pub bump: u8,
+}
+impl RedemptionReceipt {
+    pub const SPACE: usize = 97;
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RedemptionStatus {
+    Created,
+    Funded,
+    Activated,
+    Complete,
+}
+
+#[account]
 pub struct IssuerConfig {
     pub id: [u8; 32],
     pub authority: Pubkey,
@@ -1410,6 +1947,7 @@ pub enum CouponFrequency {
 pub enum Status {
     Issuing,
     IssuanceClosed,
+    Redeemed,
 }
 
 #[event]
@@ -1435,6 +1973,35 @@ pub struct CouponPeriodFunded {
 #[event]
 pub struct CouponClaimed {
     pub coupon: Pubkey,
+    pub holder: Pubkey,
+    pub amount_base: u64,
+    pub paid_total_base: u64,
+}
+#[event]
+pub struct RedemptionCreated {
+    pub redemption: Pubkey,
+    pub bond: Pubkey,
+    pub snapshot: Pubkey,
+    pub required_total_base: u64,
+    pub snapshot_total_units: u64,
+    pub maturity_ts: i64,
+}
+#[event]
+pub struct RedemptionFunded {
+    pub redemption: Pubkey,
+    pub funded_total_base: u64,
+}
+#[event]
+pub struct RedemptionActivated {
+    pub redemption: Pubkey,
+    pub bond: Pubkey,
+    pub burned_units: u64,
+    pub activated_at_ts: i64,
+    pub activated_slot: u64,
+}
+#[event]
+pub struct RedemptionClaimed {
+    pub redemption: Pubkey,
     pub holder: Pubkey,
     pub amount_base: u64,
     pub paid_total_base: u64,
@@ -1615,8 +2182,14 @@ pub enum ErrorCode {
     InvalidSettlementAccount,
     #[msg("Destination must be a token account owned by the holder.")]
     InvalidDestination,
-    #[msg("Coupon reserve is insufficient.")]
+    #[msg("Coupon or principal reserve is insufficient.")]
     InsufficientReserve,
+    #[msg("Bond maturity has not arrived.")]
+    BondNotMatured,
+    #[msg("Bond principal redemption is not fully funded.")]
+    RedemptionNotFunded,
+    #[msg("Redemption has not been activated.")]
+    RedemptionNotActive,
 }
 
 fn check_dset_mint(mint: &UncheckedAccount) -> Result<()> {
@@ -1647,6 +2220,48 @@ fn check_token_account(
     }
     Ok(())
 }
+fn principal_total_base(units: u64, face_value_base: u64) -> Result<u64> {
+    let raw = u128::from(units)
+        .checked_mul(u128::from(face_value_base))
+        .ok_or(ErrorCode::Overflow)?;
+    u64::try_from(raw).map_err(|_| error!(ErrorCode::Overflow))
+}
+
+fn check_redemption_escrow(
+    escrow: &UncheckedAccount,
+    redemption: &Redemption,
+    outgoing: u64,
+) -> Result<()> {
+    require_keys_eq!(escrow.key(), redemption.escrow, ErrorCode::InvalidVault);
+    require_keys_eq!(*escrow.owner, spl_token::ID, ErrorCode::InvalidVault);
+    let data = SplAccount::unpack(&escrow.try_borrow_data()?)
+        .map_err(|_| error!(ErrorCode::InvalidVault))?;
+    require!(
+        data.state == spl_token::state::AccountState::Initialized,
+        ErrorCode::InvalidVault
+    );
+    require_keys_eq!(
+        data.mint,
+        redemption.settlement_mint,
+        ErrorCode::InvalidVault
+    );
+    require_keys_eq!(
+        data.owner,
+        redemption.redemption_authority,
+        ErrorCode::WrongAuthority
+    );
+    let accounted = redemption
+        .funded_total_base
+        .checked_sub(redemption.paid_total_base)
+        .ok_or(ErrorCode::Overflow)?;
+    // Unsolicited deposits are unaccounted surplus and cannot increase a claim.
+    require!(
+        data.amount >= accounted && outgoing <= accounted,
+        ErrorCode::InsufficientReserve
+    );
+    Ok(())
+}
+
 fn check_coupon_escrow(
     escrow: &UncheckedAccount,
     coupon: &CouponPeriod,
@@ -1864,7 +2479,18 @@ mod tests {
         assert_eq!(CouponAuthority::SPACE, 41);
         assert_eq!(CouponPeriod::SPACE, 264);
         assert_eq!(ClaimRecord::SPACE, 97);
+        assert_eq!(RedemptionAuthority::SPACE, 41);
+        assert_eq!(Redemption::SPACE, 300);
+        assert_eq!(RedemptionReceipt::SPACE, 97);
+        assert_eq!(
+            principal_total_base(17, 1_000_000_000).unwrap(),
+            17_000_000_000
+        );
         assert!(Bond::SPACE >= 220);
+    }
+    #[test]
+    fn principal_math_rejects_u64_overflow() {
+        assert!(principal_total_base(u64::MAX, 2).is_err());
     }
     #[test]
     fn maximum_holder_count_is_one_hundred() {

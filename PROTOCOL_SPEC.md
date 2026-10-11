@@ -1,6 +1,6 @@
 # KASE Treasury — Protocol Specification
 
-**Status:** M1 financial model, M2 issuance/registry, M3 snapshots, and M4 coupon settlement are implemented and local-validator tested. Redemption, governance, frontend integration, and Devnet remain future work.
+**Status:** M1-M5 financial model, issuance/registry, snapshots, coupon settlement, and principal redemption are implemented and local-validator tested. Governance, frontend integration, and Devnet remain future work.
 
 ## Financial model
 
@@ -51,7 +51,10 @@ Only the configured DSET mint is supported for payment. Each action must be full
 | CouponAuthority | Implemented per-period PDA: coupon_authority + CouponPeriod; SPL escrow authority. |
 | Coupon escrow | Implemented classic SPL token account PDA: coupon_vault + CouponPeriod; isolated per event, owned by CouponAuthority. |
 | ClaimRecord | Implemented M4 PDA: coupon_claim + CouponPeriod + holder; amount and paid time/slot; unique per holder and event. |
-| RedemptionRecord | Planned unique maturity entitlement and atomic vault burn/position reduction. |
+| Redemption | Implemented M5 PDA [redemption, bond]; one principal event per bond, snapshot/face value and reserve totals. |
+| RedemptionAuthority | Implemented PDA [redemption_authority, Redemption]; controls separate principal escrow. |
+| Redemption escrow | Implemented classic SPL token PDA [redemption_vault, Redemption]. |
+| RedemptionReceipt | Implemented M5 PDA [redemption_claim, Redemption + holder]; exact amount and paid time/slot. |
 | Proposal, VoteRecord | Planned snapshot-weighted governance and unique vote. |
 
 close_issuance reconciles mint supply and vault amount with Bond counters and RegistryState.total_units. Position and aggregate counters are updated atomically by the only M2 issuance paths; closure does not iterate all Position accounts. This is an accounting invariant, not an independent audit scan.
@@ -76,17 +79,21 @@ M4 coupon claims reference the finalized snapshot and use immutable SnapshotEntr
 
 ## Lifecycle, instructions, and settlement
 
-Implemented M2 instructions: initialize_issuer, propose_issuer_authority, accept_issuer_authority, create_bond, register_holder, issue_units, close_issuance. Implemented M3 instructions: create_snapshot, process_snapshot_batch, finalize_snapshot. Implemented M4 instructions: configure_settlement_mint, create_coupon_period, fund_coupon_period, claim_coupon. Registration requires issuer and holder signatures and mints to BondVault. close_issuance reconciles supply then revokes mint authority. Redemption and governance remain future work.
+Implemented M2 instructions: initialize_issuer, propose_issuer_authority, accept_issuer_authority, create_bond, register_holder, issue_units, close_issuance. Implemented M3 instructions: create_snapshot, process_snapshot_batch, finalize_snapshot. Implemented M4 instructions: configure_settlement_mint, create_coupon_period, fund_coupon_period, claim_coupon. Implemented M5 instructions: create_redemption, fund_redemption, activate_redemption, claim_redemption. Registration requires issuer and holder signatures and mints to BondVault. close_issuance reconciles supply then revokes mint authority. Governance remains future work.
 
 ```text
-Bond: Draft -> Active -> Matured -> Closed
+Bond: Issuing -> IssuanceClosed -> Redeemed (terminal)
 Snapshot: Scheduled -> Processing -> Finalized (immutable)
 Coupon: Created -> Funded -> Complete (claim records remain immutable)
-Redemption: Scheduled -> Matured -> SnapshotFinalized -> Funded -> Claiming -> Closed
+Redemption: Created -> Funded -> Activated -> Complete
 Proposal: Draft -> Voting -> Finalized(Passed | Rejected | NoQuorum)
 ```
 
-At maturity, `now >= maturity_ts`, the maturity snapshot is finalized, and vault reserves cover `snapshot_units × nominal_base`. Holder signs; destination is a validated holder token account or another fixed authorized destination. Payment and burn/retirement plus unique redemption record are atomic. Unclaimed principal remains reserved; MVP does not permit issuer recovery.
+create_redemption is issuer-authorized and requires Clock time at/after immutable maturity, closed issuance, a finalized same-bond snapshot, and exact registry/Bond/mint/vault reconciliation. The unique [redemption, bond] PDA limits one principal event. Required principal is snapshot.total_units * bond.face_value_base, calculated with checked u128 then checked u64 conversion.
+
+fund_redemption accepts exactly the full reserve from a token account owned by the current issuer, using the configured six-decimal classic SPL settlement mint. Its PDA escrow is separate from coupons and cannot be withdrawn by the issuer. Activation is permissionless after maturity and exact full funding; it revalidates custody, burns all units from BondVault under BondAuthority PDA signing, checks mint supply and vault amount are zero, sets Bond status to terminal Redeemed, and sets Bond.outstanding to zero. Bond.issued, registry totals, Position accounts, and finalized snapshots retain historical values. No new issuance, snapshots, coupon periods, or redemption can follow.
+
+A holder signs claim_redemption, references their finalized SnapshotEntry, and receives snapshot units * frozen face value into a classic SPL account owned by that holder. A unique [redemption_claim, redemption, holder] receipt and checked paid totals prevent replay; transfer and state updates are atomic. Previously funded M4 coupon periods remain claimable after retirement. Unclaimed principal has no sweep or recovery instruction. Unsolicited escrow deposits are surplus, cannot increase claims, and may remain stranded.
 
 Solana transaction atomicity must ensure a failed CPI cannot leave a claim marked paid or units retired. Transitions are explicit, validated, and monotonic where possible.
 

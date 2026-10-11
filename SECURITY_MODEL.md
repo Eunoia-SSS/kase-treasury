@@ -1,6 +1,6 @@
 # KASE Treasury — Security Model
 
-**Status:** M2 registry/issuance, M3 snapshots, and M4 coupon controls are implemented and local-validator tested. Redemption and governance controls remain requirements. This is not an audit or production-readiness claim. This is not an audit or production-readiness claim.
+**Status:** M2 registry/issuance, M3 snapshots, M4 coupon controls, and M5 principal redemption are implemented and local-validator tested. Governance remains a requirement. Passing tests do not constitute an audit.
 
 ## Assets and trust boundaries
 
@@ -25,7 +25,7 @@ The table lists controls across the roadmap; it does not mean every control is a
 | Unauthorized issuer action | PDA-stored authority, signer and canonical-seed constraints, two-step authority handoff; test wrong/stale signer. |
 | Upgrade-key compromise | Separate and document upgrade authority; Devnet-only deployer key kept outside repo; consider multisig before public release. |
 | Duplicate coupon | Implemented unique `CouponPeriod(bond,period_id)` and `ClaimRecord(coupon,holder)` PDAs; one exact reserve; signer-bound entitlement; transfer and accounting update atomic. Local-validator tests replay. |
-| Duplicate redemption | Maturity and snapshot checks, unique holder redemption record, holder signature, atomic payment plus unit retirement; test replay/partial failure. |
+| Duplicate redemption | Implemented one [redemption, bond] event PDA and one [redemption_claim, redemption, holder] receipt. Holder signature, fixed SnapshotEntry, exact principal and atomic transfer/accounting prevent replay. Activation requires full funding before burning custody supply. |
 | Duplicate/overweight vote | Unique vote PDA, immutable snapshot weight, tally bounded by eligible units; test duplicate and ineligible voter. |
 | Invalid mint/account | Validate the classic SPL Token Program ID, mint, 0 bond decimals, state-appropriate mint authority (BondAuthority before issuance closure, none after), Position owner/seeds/keys, vault mint and PDA owner; reject holder ATAs and substituted accounts. |
 | Unauthorized mint or vault movement | Mint only through issuer-authorized program instruction, CPI-signed by BondAuthority PDA, destination restricted to canonical BondVault. Do not expose generic withdrawal/transfer instructions. Test rogue issuer, wrong mint/vault, and attempted external signature. |
@@ -45,7 +45,7 @@ Implemented: issuer signer/PDA checks and two-step handoff; unique IDs; bounded 
 
 Verification: 3 Rust unit tests, anchor build, TypeScript test typecheck, and 6 Anchor local-validator groups passed. Tests cover issuer initialization/handoff/auth, mint/vault, registration/duplicate, wrong mint/vault, cap/accounting, 100/101 holders, closure/revocation. Tests do not prove absence of all exploits.
 
-M3 implements forward-only dates, issuance freeze, bounded batches, unique holder entries, checked reconciliation, and finalization checks of registry, Bond, mint and vault. M4 implements issuer-bound six-decimal classic SPL mint configuration, immutable coupon-period terms tied to finalized snapshots, exact one-time escrow funding, holder-signed claims to holder-owned accounts, deterministic replay records, checked totals, and CPI-atomic payment accounting. Local tests cover exact example amounts, duplicates, auth, wrong accounts/mints, underfunding, early/unfunded claims, and balances. Redemption, governance, pause, wallet integration, Devnet, fuzzing and audit remain incomplete. Closure itself does not scan Position PDAs.
+M3 implements forward-only dates, issuance freeze, bounded batches, unique holder entries, checked reconciliation, and finalization checks of registry, Bond, mint and vault. M4 implements six-decimal settlement configuration, immutable coupon terms, exact funding, holder-signed claims, replay records and atomic accounting. M5 implements maturity-gated redemption, separate escrow, full funding, permissionless activation, full custody burn, terminal Bond state and receipts. Funded coupons remain claimable after redemption. Tests cover payout amounts, duplicate/auth/account failures, time boundaries, reserves and M2-M4 regressions. Governance, Devnet, fuzzing and audit remain incomplete. Closure does not scan every Position.
 
 ## Snapshot invariants
 
@@ -53,8 +53,9 @@ M3 implements forward-only dates, issuance freeze, bounded batches, unique holde
 2. Snapshot creation requires closed issuance and revoked mint authority. No transfer or post-close mutation exists. Past cutoffs fail; processing starts at/after cutoff.
 3. Registry is bounded to 100 unique sequential holders. Batches validate registry and Position PDAs, create one deterministic entry per holder, and advance the cursor atomically.
 4. Finalization requires each index, exact count/units and reconciliation with closed supply and vault custody. Entries and finalized headers have no mutation instruction.
-5. Coupon claims reference M3 finalized snapshots and immutable SnapshotEntry units; unique ClaimRecord PDAs prevent replay. Redemption and vote records remain future controls.
-6. Historic balances and transfers are unsupported.
+5. Coupon and redemption claims reference finalized snapshots and immutable SnapshotEntry units; unique action/holder receipts prevent replay.
+6. At activation, mint supply and custody vault become zero. Bond.outstanding becomes zero while Bond.issued, registry totals, Positions and snapshots retain historical values; terminal status prevents treating these values as live supply.
+7. Historic external balances and transfers are unsupported.
 
 ## Authority and pause model
 
@@ -69,6 +70,15 @@ Issuer authority configures bonds/actions/proposals; safe snapshot processing, c
 - Claim requires the signer to match the PDA-derived SnapshotEntry holder and exact finalized snapshot/bond. The destination must be initialized classic SPL, use the configured mint, and be owned by that signer.
 - ClaimRecord uniqueness, checked counters, event status, token CPI, and balance reconciliation make replay or partial state changes fail atomically. Escrow balance must equal funded minus paid.
 - This design locks unclaimed balances permanently in the prototype. It has no recovery/closeout path; if the UI displays a coupon, operators must disclose that limit.
+
+## M5 principal-redemption invariants
+
+- Redemption fixes the bond, finalized snapshot, settlement mint, face value, maturity, holder count and principal obligation at creation. Its PDA is unique per bond.
+- The issuer funds the exact reserve before activation. Permissionless activation is maturity-gated and rechecks snapshot, registry aggregate, Bond counters, closed mint authority, supply and vault.
+- One CPI burns all custody units before claims. A failed burn or post-CPI check rolls activation back atomically. Terminal Redeemed status, zero Bond.outstanding, zero mint supply and zero vault prevent future issuance, snapshots, coupon periods or another redemption.
+- Each holder signs and matches the deterministic SnapshotEntry. Destination uses the event mint and belongs to the holder. RedemptionReceipt and checked totals permit one exact claim.
+- Recorded reserve remaining is funded minus paid. Actual escrow must be at least that amount; claims cannot exceed it. Unsolicited deposits never increase entitlements and may remain locked as surplus.
+- Previously funded coupon claims remain valid after redemption. New coupon periods are blocked. Historical snapshots, positions, registry totals and Bond.issued stay immutable.
 
 ## Required security tests before Devnet demo
 

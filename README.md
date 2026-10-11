@@ -2,7 +2,7 @@
 
 KASE Treasury is an **independent educational prototype** exploring tokenized bond lifecycle management and corporate actions on Solana. It is intended for the Superteam Kazakhstan × KASE Corporate Actions on Blockchain challenge context. It is not an official KASE product and does not claim KASE partnership, endorsement, or approval.
 
-The repository contains a mock-only Next.js dashboard and an Anchor program for issuer setup, bond issuance, holder registry, issuance closure, M3 record-date snapshots, and M4 coupon settlement. UI values remain fabricated. The frontend has no wallet/RPC connection. The program is local-validator-tested, not deployed or audited.
+The repository contains a mock-only Next.js dashboard and an Anchor program for issuer setup, bond issuance, holder registry, issuance closure, M3 snapshots, M4 coupon settlement, and M5 principal redemption. UI values remain fabricated. The frontend has no wallet/RPC connection. The program is local-validator-tested, not deployed or audited.
 
 ## Current foundation
 
@@ -41,6 +41,6 @@ The current local program ID is in Anchor.toml and programs/kase_treasury/src/li
 
 ## Specifications and project status
 
-Product, protocol, and security specifications are in PRODUCT_SPEC.md, PROTOCOL_SPEC.md, and SECURITY_MODEL.md. ARCHITECTURE.md distinguishes current code from future design; MASTER_PLAN.md is the roadmap. M2 issuer setup, bond creation, registry, issuance and closure; M3 snapshots; and M4 coupon settlement are local-validator-tested. Snapshots require closed issuance and process only at/after cutoff. M4 binds an issuer to an existing six-decimal classic SPL demo settlement mint, requires full coupon funding, and pays each eligible holder once from a PDA escrow. Test DSET is created/minted by an off-chain local fixture and has no monetary value. Redemption, governance, wallet/RPC integration and Devnet/Vercel deployment are not implemented. The frontend remains mock-only.
+Product, protocol, and security specifications are in PRODUCT_SPEC.md, PROTOCOL_SPEC.md, and SECURITY_MODEL.md. ARCHITECTURE.md distinguishes current code from future design; MASTER_PLAN.md is the roadmap. M2 issuer setup, bond creation, registry, issuance and closure; M3 snapshots; M4 coupon settlement; and M5 principal redemption are local-validator-tested. Snapshots require closed issuance and process only at/after cutoff. M4 binds an issuer to an existing six-decimal classic SPL demo settlement mint, requires full coupon funding, and pays each eligible holder once from a PDA escrow. Test DSET is created/minted by an off-chain local fixture and has no monetary value. Principal redemption is implemented and local-validator-tested: issuer-funded isolated escrow, full custody-token burn at maturity activation, and holder-signed snapshot claims. Governance, wallet/RPC integration and Devnet/Vercel deployment are not implemented. The frontend remains mock-only.
 
 This is a learning prototype, not investment, legal, tax, custody, or compliance advice and not a production securities platform.

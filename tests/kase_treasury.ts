@@ -1,6 +1,6 @@
 import * as anchor from "@coral-xyz/anchor";
 import { AnchorProvider, BN, Program, web3 } from "@coral-xyz/anchor";
-import { createAssociatedTokenAccount, createMint, getAccount, getMint, mintTo, TOKEN_PROGRAM_ID } from "@solana/spl-token";
+import { createAccount, createAssociatedTokenAccount, createMint, getAccount, getMint, mintTo, TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { createHash, randomBytes } from "crypto";
 import assert from "node:assert/strict";
 import { KaseTreasury } from "../target/types/kase_treasury";
@@ -18,7 +18,7 @@ async function fails(p: Promise<unknown>, label: string): Promise<void> {
   let didFail = false; try { await p; } catch { didFail = true; }
   assert.equal(didFail, true, "expected failure: " + label);
 }
-async function make(cap = 100): Promise<F> {
+async function make(cap = 100, maturityOffsetSeconds = 86400): Promise<F> {
   const issuer = bytes(); const id = bytes();
   const config = addr([Buffer.from("issuer"), Buffer.from(issuer)]);
   const bond = addr([Buffer.from("bond"), config.toBuffer(), Buffer.from(id)]);
@@ -27,7 +27,7 @@ async function make(cap = 100): Promise<F> {
   const vault = addr([Buffer.from("bond_vault"), bond.toBuffer()]);
   const registry = addr([Buffer.from("registry"), bond.toBuffer()]);
   await program.methods.initializeIssuer(issuer).accountsStrict({ config, authority: provider.wallet.publicKey, systemProgram: SystemProgram.programId }).rpc();
-  await program.methods.createBond(id, new BN(1_000_000_000), 1_000, { semiannual: {} }, new BN(Math.floor(Date.now()/1000)+86400), new BN(cap))
+  await program.methods.createBond(id, new BN(1_000_000_000), 1_000, { semiannual: {} }, new BN(Math.floor(Date.now()/1000)+maturityOffsetSeconds), new BN(cap))
     .accountsStrict({ config, authority: provider.wallet.publicKey, bond, bondAuthority: auth, mint, vault, registry, tokenProgram: TOKEN_PROGRAM_ID, systemProgram: SystemProgram.programId, rent: SYSVAR_RENT_PUBKEY }).rpc();
   return { issuer, id, config, bond, auth, mint, vault, registry };
 }
@@ -310,6 +310,9 @@ async function waitTokenAmount(address:web3.PublicKey,expected:bigint):Promise<A
 async function makeAta(mint:web3.PublicKey,owner:web3.PublicKey):Promise<web3.PublicKey> {
   return createAssociatedTokenAccount(provider.connection,settlementPayer(),mint,owner,{commitment:"confirmed"},TOKEN_PROGRAM_ID);
 }
+async function makeTokenAccount(mint:web3.PublicKey,owner:web3.PublicKey):Promise<web3.PublicKey> {
+  return createAccount(provider.connection,settlementPayer(),mint,owner,web3.Keypair.generate(),{commitment:"confirmed"},TOKEN_PROGRAM_ID);
+}
 async function makeDset(f:F):Promise<{mint:web3.PublicKey; source:web3.PublicKey; mintAuthority:web3.Keypair}> {
   const mintAuthority=web3.Keypair.generate();
   const mint=await createMint(provider.connection,settlementPayer(),mintAuthority.publicKey,null,6,undefined,undefined,TOKEN_PROGRAM_ID);
@@ -431,5 +434,150 @@ describe("KASE Treasury M4 coupon settlement",function(){
     await program.methods.fundCouponPeriod(new BN(50_000_000)).accountsStrict(fundAccounts(f,mint,source,period)).rpc();
     await fails(program.methods.claimCoupon().accountsStrict(claimAccounts(f,snapshot,mint,h,period,destination)).signers([h]).rpc(),"claim before payment date");
     await fails(program.methods.createCouponPeriod(new BN(period+1),new BN(recordDate),new BN(payment)).accountsStrict({...prep.accounts,coupon:couponAddress(f,period+1)}).rpc(),"invalid snapshot identity");
+  });
+});
+
+
+function redemptionAddress(f:F):web3.PublicKey { return addr([Buffer.from("redemption"),f.bond.toBuffer()]); }
+function redemptionAuthorityAddress(redemption:web3.PublicKey):web3.PublicKey { return addr([Buffer.from("redemption_authority"),redemption.toBuffer()]); }
+function redemptionVaultAddress(redemption:web3.PublicKey):web3.PublicKey { return addr([Buffer.from("redemption_vault"),redemption.toBuffer()]); }
+function redemptionReceiptAddress(redemption:web3.PublicKey,holder:web3.PublicKey):web3.PublicKey { return addr([Buffer.from("redemption_claim"),redemption.toBuffer(),holder.toBuffer()]); }
+function createRedemptionAccounts(f:F,snapshot:web3.PublicKey,mint:web3.PublicKey,overrides:Record<string,web3.PublicKey>={}):any {
+  const redemption=redemptionAddress(f);
+  return {redemption,accounts:{
+    config:f.config,authority:overrides.authority??provider.wallet.publicKey,bond:overrides.bond??f.bond,
+    registry:f.registry,snapshot:overrides.snapshot??snapshot,settlementConfig:settlementConfigAddress(f),
+    settlementMint:overrides.settlementMint??mint,redemption,
+    redemptionAuthority:redemptionAuthorityAddress(redemption),escrow:redemptionVaultAddress(redemption),
+    bondAuthority:f.auth,mint:f.mint,vault:f.vault,tokenProgram:TOKEN_PROGRAM_ID,
+    systemProgram:SystemProgram.programId,rent:SYSVAR_RENT_PUBKEY,
+  }};
+}
+function fundRedemptionAccounts(f:F,mint:web3.PublicKey,source:web3.PublicKey,overrides:Record<string,web3.PublicKey>={}):any {
+  const redemption=redemptionAddress(f);
+  return {config:f.config,authority:overrides.authority??provider.wallet.publicKey,bond:f.bond,redemption,
+    settlementConfig:settlementConfigAddress(f),settlementMint:overrides.settlementMint??mint,
+    source:overrides.source??source,escrow:overrides.escrow??redemptionVaultAddress(redemption),tokenProgram:TOKEN_PROGRAM_ID};
+}
+function activateRedemptionAccounts(f:F,snapshot:web3.PublicKey,overrides:Record<string,web3.PublicKey>={}):any {
+  const redemption=redemptionAddress(f);
+  return {redemption,bond:overrides.bond??f.bond,snapshot:overrides.snapshot??snapshot,registry:f.registry,
+    bondAuthority:f.auth,mint:f.mint,vault:f.vault,escrow:overrides.escrow??redemptionVaultAddress(redemption),
+    tokenProgram:TOKEN_PROGRAM_ID,activator:provider.wallet.publicKey};
+}
+function claimRedemptionAccounts(f:F,snapshot:web3.PublicKey,mint:web3.PublicKey,holder:web3.Keypair,destination:web3.PublicKey,overrides:Record<string,web3.PublicKey>={}):any {
+  const redemption=redemptionAddress(f);
+  return {config:f.config,bond:overrides.bond??f.bond,redemption,snapshot:overrides.snapshot??snapshot,
+    holder:holder.publicKey,snapshotEntry:overrides.snapshotEntry??snapshotEntryAddress(snapshot,holder.publicKey),
+    settlementConfig:settlementConfigAddress(f),settlementMint:overrides.settlementMint??mint,
+    redemptionAuthority:redemptionAuthorityAddress(redemption),escrow:overrides.escrow??redemptionVaultAddress(redemption),
+    destination,receipt:redemptionReceiptAddress(redemption,holder.publicKey),payer:provider.wallet.publicKey,
+    tokenProgram:TOKEN_PROGRAM_ID,systemProgram:SystemProgram.programId,rent:SYSVAR_RENT_PUBKEY};
+}
+async function waitForClock(target:number):Promise<void> {
+  const deadline=Date.now()+45_000;
+  while(await clockUnix()<target && Date.now()<deadline) await new Promise(resolve=>setTimeout(resolve,250));
+  assert.ok((await clockUnix())>=target,"validator clock reached target timestamp");
+}
+
+describe("KASE Treasury M5 principal redemption",function(){
+  this.timeout(1_000_000);
+  it("funds full maturity principal, burns custody units, pays each snapshot holder once, and preserves funded coupon claims",async()=>{
+    const f=await make(100,12);
+    const holders=[await register(f,web3.Keypair.generate(),10),await register(f,web3.Keypair.generate(),5),await register(f,web3.Keypair.generate(),2)];
+    const {snapshot,recordDate}=await makeFinalizedSnapshot(f,holders);
+    const {mint,source,mintAuthority}=await makeDset(f);
+    const prepared=createRedemptionAccounts(f,snapshot,mint);
+    await fails(program.methods.createRedemption().accountsStrict(prepared.accounts).rpc(),"redemption before maturity");
+    const earlyRedemption=redemptionAddress(f);
+    assert.equal(await provider.connection.getAccountInfo(earlyRedemption,"confirmed"),null,"failed early creation is atomic");
+
+    const couponPeriod=8101;
+    const couponPayment=(await clockUnix())+2;
+    const c1=createCouponAccounts(f,snapshot,mint,couponPeriod,recordDate,couponPayment);
+    await program.methods.createCouponPeriod(new BN(couponPeriod),new BN(recordDate),new BN(couponPayment)).accountsStrict(c1.accounts).rpc();
+    await program.methods.fundCouponPeriod(new BN(850_000_000)).accountsStrict(fundAccounts(f,mint,source,couponPeriod)).rpc();
+    await waitForClock(couponPayment);
+    const couponDests=await Promise.all(holders.map(h=>makeAta(mint,h.publicKey)));
+    for(let i=0;i<holders.length;i++) await program.methods.claimCoupon().accountsStrict(claimAccounts(f,snapshot,mint,holders[i],couponPeriod,couponDests[i])).signers([holders[i]]).rpc();
+    const couponBalances=await Promise.all(couponDests.map((d,i)=>waitTokenAmount(d,[500_000_000n,250_000_000n,100_000_000n][i])));
+    assert.deepEqual(couponBalances.map(x=>Number(x.amount)/1_000_000),[500,250,100]);
+
+    // A second fully funded coupon stays claimable after the bond is retired.
+    const couponPeriodAfter=8102;
+    const couponPaymentAfter=(await clockUnix())+1;
+    const c2=createCouponAccounts(f,snapshot,mint,couponPeriodAfter,recordDate,couponPaymentAfter);
+    await mintTo(provider.connection,settlementPayer(),mint,source,mintAuthority,850_000_000n,[],undefined,TOKEN_PROGRAM_ID);
+    await program.methods.createCouponPeriod(new BN(couponPeriodAfter),new BN(recordDate),new BN(couponPaymentAfter)).accountsStrict(c2.accounts).rpc();
+    await program.methods.fundCouponPeriod(new BN(850_000_000)).accountsStrict(fundAccounts(f,mint,source,couponPeriodAfter)).rpc();
+
+    const outsider=web3.Keypair.generate();
+    await fails(program.methods.createRedemption().accountsStrict(createRedemptionAccounts(f,snapshot,mint,{authority:outsider.publicKey}).accounts).signers([outsider]).rpc(),"unauthorized issuer");
+    await fails(program.methods.createRedemption().accountsStrict(createRedemptionAccounts(f,snapshot,mint,{bond:web3.Keypair.generate().publicKey}).accounts).rpc(),"wrong bond account");
+    const wrongMint=await createMint(provider.connection,settlementPayer(),web3.Keypair.generate().publicKey,null,6,undefined,undefined,TOKEN_PROGRAM_ID);
+    await fails(program.methods.createRedemption().accountsStrict(createRedemptionAccounts(f,snapshot,mint,{settlementMint:wrongMint}).accounts).rpc(),"wrong settlement mint");
+    const other=await make(2,60);
+    const otherHolder=await register(other,web3.Keypair.generate(),1);
+    const otherSnapshot=(await makeFinalizedSnapshot(other,[otherHolder])).snapshot;
+    await fails(program.methods.createRedemption().accountsStrict(createRedemptionAccounts(f,snapshot,mint,{snapshot:otherSnapshot}).accounts).rpc(),"snapshot belongs to another bond");
+    await waitForClock(Number((await program.account.bond.fetch(f.bond)).maturityTs.toString()));
+    await program.methods.createRedemption().accountsStrict(prepared.accounts).rpc();
+    const redemption=await program.account.redemption.fetch(prepared.redemption);
+    assert.equal(redemption.requiredTotalBase.toString(),"17000000000");
+    assert.equal(redemption.snapshotTotalUnits.toString(),"17");
+    await fails(program.methods.createRedemption().accountsStrict(prepared.accounts).rpc(),"second redemption event");
+    await fails(program.methods.activateRedemption().accountsStrict(activateRedemptionAccounts(f,snapshot)).rpc(),"activation before funding");
+    const supplyBefore=await getMint(provider.connection,f.mint,"confirmed",TOKEN_PROGRAM_ID);
+    assert.equal(supplyBefore.supply,17n,"bond tokens remain unburned before reserve funding");
+
+    await mintTo(provider.connection,settlementPayer(),mint,source,mintAuthority,17_000_000_000n,[],undefined,TOKEN_PROGRAM_ID);
+    await fails(program.methods.fundRedemption(new BN(16_999_999_999)).accountsStrict(fundRedemptionAccounts(f,mint,source)).rpc(),"partial funding");
+    await fails(program.methods.fundRedemption(new BN(17_000_000_000)).accountsStrict(fundRedemptionAccounts(f,mint,source,{authority:outsider.publicKey})).signers([outsider]).rpc(),"unauthorized funding");
+    await fails(program.methods.fundRedemption(new BN(17_000_000_000)).accountsStrict(fundRedemptionAccounts(f,mint,source,{settlementMint:wrongMint})).rpc(),"incorrect funding mint");
+    await fails(program.methods.fundRedemption(new BN(17_000_000_000)).accountsStrict(fundRedemptionAccounts(f,mint,source,{escrow:web3.Keypair.generate().publicKey})).rpc(),"incorrect escrow");
+    await program.methods.fundRedemption(new BN(17_000_000_000)).accountsStrict(fundRedemptionAccounts(f,mint,source)).rpc();
+    const redemptionEscrow=redemptionVaultAddress(prepared.redemption);
+    assert.equal((await waitTokenAmount(redemptionEscrow,17_000_000_000n)).amount,17_000_000_000n);
+
+    const principalDests=await Promise.all(holders.map(h=>makeTokenAccount(mint,h.publicKey)));
+    await fails(program.methods.claimRedemption().accountsStrict(claimRedemptionAccounts(f,snapshot,mint,holders[0],principalDests[0])).signers([holders[0]]).rpc(),"claim before activation");
+    const wrongDest=await makeAta(mint,outsider.publicKey);
+    await fails(program.methods.activateRedemption().accountsStrict(activateRedemptionAccounts(f,snapshot,{escrow:wrongDest})).rpc(),"wrong activation escrow");
+    await program.methods.activateRedemption().accountsStrict(activateRedemptionAccounts(f,snapshot)).rpc();
+
+    let retired=await getMint(provider.connection,f.mint,"confirmed",TOKEN_PROGRAM_ID);
+    for(let retry=0;retired.supply!==0n&&retry<20;retry++){await new Promise(resolve=>setTimeout(resolve,250));retired=await getMint(provider.connection,f.mint,"confirmed",TOKEN_PROGRAM_ID);}
+    assert.equal(retired.supply,0n,"all 17 custody tokens burned");
+    assert.equal((await waitTokenAmount(f.vault,0n)).amount,0n);
+    const bond=await program.account.bond.fetch(f.bond);
+    assert.ok(bond.status.redeemed!==undefined);
+    assert.equal(bond.outstanding.toString(),"0");
+    assert.equal((await program.account.registryState.fetch(f.registry)).totalUnits.toString(),"17","registry history remains intact");
+
+    await fails(program.methods.issueUnits(new BN(1)).accountsStrict(issueAccounts(f,holders[0])).rpc(),"issue after terminal redemption");
+    await fails(createSnapshot(f,bytes(),await clockUnix()),"new snapshot after terminal redemption");
+    await fails(program.methods.claimRedemption().accountsStrict(claimRedemptionAccounts(f,snapshot,mint,holders[0],wrongDest)).signers([holders[0]]).rpc(),"destination belongs to different investor");
+    await fails(program.methods.claimRedemption().accountsStrict(claimRedemptionAccounts(f,snapshot,mint,holders[1],principalDests[1],{snapshotEntry:snapshotEntryAddress(snapshot,holders[0].publicKey)})).signers([holders[1]]).rpc(),"wrong holder snapshot entry");
+    await fails(program.methods.claimRedemption().accountsStrict(claimRedemptionAccounts(f,snapshot,mint,holders[0],principalDests[0],{snapshot:web3.Keypair.generate().publicKey})).signers([holders[0]]).rpc(),"wrong snapshot");
+
+    // The second coupon was funded before redemption and remains payable afterward.
+    await waitForClock(couponPaymentAfter);
+    for(let i=0;i<holders.length;i++) await program.methods.claimCoupon().accountsStrict(claimAccounts(f,snapshot,mint,holders[i],couponPeriodAfter,couponDests[i])).signers([holders[i]]).rpc();
+    const couponAfter=await program.account.couponPeriod.fetch(c2.coupon);
+    assert.ok(couponAfter.status.complete!==undefined);
+    assert.equal(couponAfter.paidTotalBase.toString(),"850000000");
+
+    for(let i=0;i<holders.length;i++) await program.methods.claimRedemption().accountsStrict(claimRedemptionAccounts(f,snapshot,mint,holders[i],principalDests[i])).signers([holders[i]]).rpc();
+    assert.deepEqual(await Promise.all(principalDests.map(async (d,i)=>Number((await waitTokenAmount(d,[10_000_000_000n,5_000_000_000n,2_000_000_000n][i])).amount)/1_000_000)),[10_000,5_000,2_000]);
+    await fails(program.methods.claimRedemption().accountsStrict(claimRedemptionAccounts(f,snapshot,mint,holders[0],principalDests[0])).signers([holders[0]]).rpc(),"duplicate principal claim");
+    const final=await program.account.redemption.fetch(prepared.redemption);
+    assert.ok(final.status.complete!==undefined);
+    assert.equal(final.paidTotalBase.toString(),"17000000000");
+    assert.equal(final.fundedTotalBase.toString(),"17000000000");
+    assert.equal(final.burnedUnits.toString(),"17");
+    assert.equal(final.claimCount,3);
+    assert.deepEqual(await Promise.all(holders.map(async h=>(await program.account.redemptionReceipt.fetch(redemptionReceiptAddress(prepared.redemption,h.publicKey))).amountBase.toString())),["10000000000","5000000000","2000000000"]);
+    assert.equal((await waitTokenAmount(redemptionEscrow,0n)).amount,0n);
+    assert.equal((await waitTokenAmount(f.vault,0n)).amount,0n);
   });
 });

@@ -106,16 +106,21 @@ The target workflow covers issuer setup, bond registry, snapshots, coupons, rede
 - **Tests:** Full M2-M6 local-validator suite covers 10/5/2 Yes/No/Abstain weights, duplicate/ineligible/wrong-bond/wrong-snapshot votes, invalid proposal snapshots, issuer authorization, time boundaries, invalid windows/thresholds, exact quorum, strict approval boundary, no-vote and abstain-only rejection, double finalization, post-redemption restrictions, and M2-M5 regressions.
 - **Limits:** One vote per holder, no delegation/split votes, 100-holder cap, max 365-day window, no amendment executor, no quorum extension/cancellation, and no audit. Hash integrity depends on clients retaining the exact proposal content that was hashed.
 
-### M7 — Automated verification and security gate
+### M7 - Security review and Devnet readiness
 
-- **Tasks:** End-to-end/property/boundary tests, secret/dependency/static scans, account/authority review, reproducible fixtures and limitations.
-- **Acceptance:** Required invariants have reproducible passing tests; no unresolved critical issue for an educational Devnet demo. Tests are not an audit.
-- **Tests:** Rust/Anchor localnet, math boundaries, account substitution/replay/cutoff/reserve/lifecycle and IDL review.
+**Status:** Focused local review and verification completed; this is not an external audit.
+
+- **Review scope:** Cross-milestone M2-M6 PDA/signer constraints, account substitution, snapshot immutability, coupon/redemption escrow accounting, duplicate claims/votes, governance boundaries, arithmetic, token validation, lifecycle transitions, local secrets/history, and deployment configuration.
+- **High finding fixed:** Coupon escrow validation previously required exact balance equality. A public SPL donation could permanently block all remaining claims. It now permits surplus while limiting each payout to funded minus paid; a local-validator regression donates one base unit, pays all holders, and verifies the surplus stays unaccounted.
+- **Medium deployment blocker:** Source, Anchor localnet config and generated IDL use 8Lbkzg5shbLTZSz9y68YxgxpWE59VbHEVmj2XczZxR69, but the ignored deployment program keypair derives 7P3NaKZkqSKHYjTUF638mZifpWMeVq1qvfPNNjtVFjWZ. No identity was changed; resolve and retest before deployment.
+- **Medium settlement limitation:** The configured six-decimal SPL settlement mint may retain a freeze authority capable of freezing an escrow or holder account. Demo mint must have no freeze authority; program-side rejection remains future work.
+- **Verification:** cargo fmt --all -- --check; cargo test -p kase_treasury -q (5 passed); anchor build (exit 0); test TypeScript typecheck (passed); complete local-validator M2-M6 suite (13 passed); git diff --check (passed). Tests ran with Windows Node 24.21.0 from WSL because Linux Node is absent; direct validator + ts-mocha was used.
+- **Readiness:** No Critical issue confirmed; high escrow griefing fixed. Devnet remains BLOCKED on program-ID/keypair alignment, a throwaway deployer wallet, and a Devnet client/smoke script. Secret scanning used redacted high-confidence patterns; no matches were found in tracked history or current source. No Devnet state was changed.
 
 ### M8 — Solana Devnet transactions
 
 - **Tasks:** After approval, use a throwaway deployer, verify program/IDL/authority, create demo accounts, run issuance -> snapshot -> coupon -> redemption -> governance and retain signatures.
-- **Dependencies:** M7, faucet SOL and Devnet RPC; no Mainnet key or funds.
+- **Dependencies:** M7 plus resolved program-ID/keypair alignment, a throwaway deployer, faucet SOL and Devnet RPC; no Mainnet key or funds.
 - **Acceptance:** Fresh wallet can replay and outputs match confirmed accounts/signatures.
 - **Risks:** Network resets, RPC outages, deployer exposure and upgrade authority.
 
@@ -166,4 +171,4 @@ The target workflow covers issuer setup, bond registry, snapshots, coupons, rede
 
 ## Current status and next gate
 
-M0 remains a mock-only frontend; dev server and production build were previously reported working. M1 documentation is complete. M2-M5 are on the remote branch. M6 governance is implemented and locally tested in the current unpushed worktree. No Devnet or Vercel deployment exists. **Next: M7 automated verification and security gate.**
+M0 remains a mock-only frontend; dev server and production build were previously reported working. M1 documentation is complete. M2-M6 are on main tracked by origin. M7 review fixes and documentation are local and unpushed. No Devnet or Vercel deployment exists. **Next: resolve the program-ID/keypair mismatch and prepare an approved Devnet smoke client (M8).**

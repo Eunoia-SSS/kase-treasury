@@ -44,4 +44,4 @@ Bond mint decimals are 0 (whole bonds) and the classic SPL mint remains in PDA c
 
 ## Current project status
 
-The UI remains mock-only. M2-M6 pass Rust unit and Anchor local-validator tests. Coupon settlement, redemption, and governance are local-validator-only; no Devnet or wallet integration exists. M2-M5 are on GitHub; M6 is in the current unpushed worktree. Vercel is not configured. Tests are not an audit.
+The UI remains mock-only. M2-M6 pass Rust unit and Anchor local-validator tests. Coupon settlement, redemption, and governance are local-validator-only; no Devnet or wallet integration exists. M2-M6 are on the main branch tracked by origin. M7 review changes are local and unpushed. Vercel is not configured. Tests are not an audit. Devnet readiness is blocked on program-ID/keypair alignment and a deployer wallet.

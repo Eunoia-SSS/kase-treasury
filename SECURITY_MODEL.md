@@ -34,7 +34,7 @@ The table lists controls across the roadmap; it does not mean every control is a
 | Snapshot liveness | Permissionless batches of at most 5 and permissionless finalization after cutoff; cranker cannot choose holder or units. Test cutoff and 100-holder cap. |
 | Overflow/rounding exploit | Integer base units, checked `u128` intermediate and `u64` conversions, input bounds, documented floor and dust policy; boundary/property tests. |
 | Invalid lifecycle transition | Explicit enum/status guards, immutable activated terms/snapshots; test out-of-order and repeated calls. |
-| Insufficient reserves | Implemented exact full-reserve funding before `Funded`; event remains Created on partial funding failure; escrow amount reconciles with funded minus paid; claims cannot exceed reserve. Local tests underfund and check escrow. |
+| Insufficient reserves / escrow donation griefing | Implemented exact full-reserve funding before `Funded`; event remains Created on partial funding failure. Claims are bounded by funded minus paid. Actual coupon/redemption escrow must cover that accounted amount; unsolicited deposits are surplus and do not change entitlements or block claims. A local regression donates one base unit before claims. |
 | Time ambiguity | UTC Unix seconds from `Clock`, reject mutation at `now >= cutoff`, show scheduled time and slots; test just before/equal/after. |
 | Misleading UI/indexer | Mark fixtures as mock; on live data show cluster/source/freshness; no fake explorer links; cross-check finalized state and signatures. |
 | Secret leak | No private key/seed/API secret in source or `NEXT_PUBLIC_*`; safe `.env.example`, ignore local env/wallet/validator/build output, audit files and Git history before any public push. |
@@ -46,6 +46,13 @@ Implemented: issuer signer/PDA checks and two-step handoff; unique IDs; bounded 
 Verification: 3 Rust unit tests, anchor build, TypeScript test typecheck, and 6 Anchor local-validator groups passed. Tests cover issuer initialization/handoff/auth, mint/vault, registration/duplicate, wrong mint/vault, cap/accounting, 100/101 holders, closure/revocation. Tests do not prove absence of all exploits.
 
 M3 implements forward-only dates, issuance freeze, bounded batches, unique holder entries, checked reconciliation, and finalization checks of registry, Bond, mint and vault. M4 implements six-decimal settlement configuration, immutable coupon terms, exact funding, holder-signed claims, replay records and atomic accounting. M5 implements maturity-gated redemption, separate escrow, full funding, permissionless activation, full custody burn, terminal Bond state and receipts. M6 implements issuer-created immutable proposals, holder-signed snapshot-weighted VoteReceipts, checked 100-holder-bounded tallies, integer quorum/approval and permissionless one-time finalization. Funded coupons remain claimable after redemption; open proposals remain bound to their snapshots. Tests cover all M2-M6 flows. Devnet, fuzzing and audit remain incomplete. Closure does not scan every Position.
+
+## M7 focused review findings
+
+- **High, fixed:** Coupon claim validation previously required the public SPL escrow balance to equal its accounted reserve exactly. Any account could donate a token base unit to the known escrow and permanently block all remaining claims because the program has no sweep instruction. Validation now allows balance >= funded minus paid while limiting every outgoing claim to the accounted reserve. Regression coverage donates one base unit, pays all holders, and confirms the surplus remains unaccounted.
+- **Medium, open deployment blocker:** The declared/configured/IDL program ID differs from the ignored deployment program keypair's public address. Deployment must wait until the intended identity is explicitly selected and synchronized; no keypair/source change was made during review.
+- **Medium, open:** A configured six-decimal classic SPL settlement mint may retain a freeze authority. That authority can freeze an escrow or holder account and halt settlement. Demo operators must use a disposable mint without freeze authority; program-side rejection remains future work.
+- No Critical finding was confirmed. This focused review is not an external audit.
 
 ## Snapshot invariants
 
@@ -68,7 +75,7 @@ Issuer authority configures bonds/actions/proposals; safe snapshot processing, c
 - CouponPeriod is unique by bond and period ID and can be created only for a finalized same-bond snapshot. Coupon rate/frequency are read from the immutable Bond; record date must match the snapshot; payment date cannot be in the past at event creation.
 - The reserve is computed in checked integer base units and must be transferred in full exactly once from an issuer-owned token account before claims. No mint-on-claim, partial funding, generic withdrawal, or sweep instruction exists.
 - Claim requires the signer to match the PDA-derived SnapshotEntry holder and exact finalized snapshot/bond. The destination must be initialized classic SPL, use the configured mint, and be owned by that signer.
-- ClaimRecord uniqueness, checked counters, event status, token CPI, and balance reconciliation make replay or partial state changes fail atomically. Escrow balance must equal funded minus paid.
+- ClaimRecord uniqueness, checked counters, event status, token CPI, and balance reconciliation make replay or partial state changes fail atomically. Coupon escrow balance must be at least funded minus paid; each outgoing amount is bounded by that accounted reserve. Direct SPL donations are surplus and cannot block claims or increase entitlements.
 - This design locks unclaimed balances permanently in the prototype. It has no recovery/closeout path; if the UI displays a coupon, operators must disclose that limit.
 
 ## M5 principal-redemption invariants

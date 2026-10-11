@@ -41,6 +41,8 @@ The current local program ID is in Anchor.toml and programs/kase_treasury/src/li
 
 ## Specifications and project status
 
+Devnet deployment and initialization steps are documented in [DEVNET_RUNBOOK.md](./DEVNET_RUNBOOK.md); the runbook is a plan only and no Devnet state has been changed.
+
 Product, protocol, and security specifications are in PRODUCT_SPEC.md, PROTOCOL_SPEC.md, and SECURITY_MODEL.md. ARCHITECTURE.md distinguishes current code from future design; MASTER_PLAN.md is the roadmap. M2 issuer setup, bond creation, registry, issuance and closure; M3 snapshots; M4 coupon settlement; M5 principal redemption; and M6 governance are local-validator-tested. Snapshots require closed issuance and process only at/after cutoff. M4 binds an issuer to an existing six-decimal classic SPL demo settlement mint, requires full coupon funding, and pays each eligible holder once from a PDA escrow. Test DSET is created/minted by an off-chain local fixture and has no monetary value. Principal redemption is implemented and local-validator-tested: issuer-funded isolated escrow, full custody-token burn at maturity activation, and holder-signed snapshot claims. The governance program records immutable proposal terms, snapshot-weighted Yes/No/Abstain votes and an integer quorum/approval result only. It does not execute proposals. Wallet/RPC integration and Devnet/Vercel deployment are not implemented. The frontend remains mock-only.
 
 This is a learning prototype, not investment, legal, tax, custody, or compliance advice and not a production securities platform.

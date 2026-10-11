@@ -1,6 +1,6 @@
 import * as anchor from "@coral-xyz/anchor";
 import { AnchorProvider, BN, Program, web3 } from "@coral-xyz/anchor";
-import { createAccount, createAssociatedTokenAccount, createMint, getAccount, getMint, mintTo, TOKEN_PROGRAM_ID } from "@solana/spl-token";
+import { createAccount, createAssociatedTokenAccount, createMint, getAccount, getMint, mintTo, transfer, TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { createHash, randomBytes } from "crypto";
 import assert from "node:assert/strict";
 import { KaseTreasury } from "../target/types/kase_treasury";
@@ -365,7 +365,7 @@ describe("KASE Treasury M4 coupon settlement",function(){
     const f=await make(100);
     const holders=[await register(f,web3.Keypair.generate(),10),await register(f,web3.Keypair.generate(),5),await register(f,web3.Keypair.generate(),2)];
     const {snapshot,recordDate}=await makeFinalizedSnapshot(f,holders);
-    const {mint,source}=await makeDset(f);
+    const {mint,source,mintAuthority}=await makeDset(f);
     const paymentDate=(await clockUnix())+3;
     const period=7001;
     const prepared=createCouponAccounts(f,snapshot,mint,period,recordDate,paymentDate);
@@ -391,6 +391,13 @@ describe("KASE Treasury M4 coupon settlement",function(){
     const funded=await getAccount(provider.connection,couponVaultAddress(prepared.coupon),"confirmed",TOKEN_PROGRAM_ID);
     assert.equal(funded.amount,850_000_000n);
 
+    // Public SPL transfers may add surplus; this must not block holder claims.
+    await mintTo(provider.connection,settlementPayer(),mint,source,mintAuthority,1n,[],undefined,TOKEN_PROGRAM_ID);
+    await waitTokenAmount(source,1n);
+    await transfer(provider.connection,settlementPayer(),source,couponVaultAddress(prepared.coupon),provider.wallet.publicKey,1n,[],undefined,TOKEN_PROGRAM_ID);
+    const donated=await waitTokenAmount(couponVaultAddress(prepared.coupon),850_000_001n);
+    assert.equal(donated.amount,850_000_001n);
+
     const wrongDest=await makeAta(mint,web3.Keypair.generate().publicKey);
     await fails(program.methods.claimCoupon().accountsStrict(claimAccounts(f,snapshot,mint,holders[0],period,wrongDest)).signers([holders[0]]).rpc(),"destination owned by a different investor");
     const wrongMintDest=await makeAta(wrongMint,holders[0].publicKey);
@@ -415,7 +422,7 @@ describe("KASE Treasury M4 coupon settlement",function(){
     assert.equal(final.claimCount,3);
     assert.ok(final.status.complete!==undefined);
     const empty=await getAccount(provider.connection,couponVaultAddress(prepared.coupon),"confirmed",TOKEN_PROGRAM_ID);
-    assert.equal(empty.amount,0n);
+    assert.equal(empty.amount,1n,"unsolicited escrow surplus remains unaccounted");
   });
 
   it("rejects invalid settlement mint decimals and claims before full funding",async()=>{

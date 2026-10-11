@@ -2705,7 +2705,7 @@ fn check_coupon_escrow(
         .checked_sub(coupon.paid_total_base)
         .ok_or(ErrorCode::Overflow)?;
     require!(
-        data.amount == accounted && outgoing <= data.amount,
+        data.amount >= accounted && outgoing <= accounted,
         ErrorCode::InsufficientReserve
     );
     Ok(())

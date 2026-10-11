@@ -1,17 +1,23 @@
-[features]
-seeds = false
-skip-lint = false
-
 [toolchain]
 anchor_version = "0.31.1"
 solana_version = "2.1.0"
 package_manager = "npm"
 
+[features]
+resolution = true
+skip-lint = false
+
 [programs.localnet]
-kase_treasury = "8Lbkzg5shbLTZSz9y68YxgxpWE59VbHEVmj2XczZxR69"
+kase_treasury = "7P3NaKZkqSKHYjTUF638mZifpWMeVq1qvfPNNjtVFjWZ"
+
+[programs.devnet]
+kase_treasury = "7P3NaKZkqSKHYjTUF638mZifpWMeVq1qvfPNNjtVFjWZ"
+
+[registry]
+url = "https://api.apr.dev"
 
 [provider]
-cluster = "Localnet"
+cluster = "localnet"
 wallet = "~/.config/solana/id.json"
 
 [workspace]

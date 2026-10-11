@@ -112,10 +112,21 @@ The target workflow covers issuer setup, bond registry, snapshots, coupons, rede
 
 - **Review scope:** Cross-milestone M2-M6 PDA/signer constraints, account substitution, snapshot immutability, coupon/redemption escrow accounting, duplicate claims/votes, governance boundaries, arithmetic, token validation, lifecycle transitions, local secrets/history, and deployment configuration.
 - **High finding fixed:** Coupon escrow validation previously required exact balance equality. A public SPL donation could permanently block all remaining claims. It now permits surplus while limiting each payout to funded minus paid; a local-validator regression donates one base unit, pays all holders, and verifies the surplus stays unaccounted.
-- **Medium deployment blocker:** Source, Anchor localnet config and generated IDL use 8Lbkzg5shbLTZSz9y68YxgxpWE59VbHEVmj2XczZxR69, but the ignored deployment program keypair derives 7P3NaKZkqSKHYjTUF638mZifpWMeVq1qvfPNNjtVFjWZ. No identity was changed; resolve and retest before deployment.
+- **Program identity blocker resolved in M8A:** The existing ignored program keypair derives 7P3NaKZkqSKHYjTUF638mZifpWMeVq1qvfPNNjtVFjWZ; Anchor source/localnet/devnet config and rebuilt IDL are synchronized to it. The keypair remains local and must be backed up securely.
 - **Medium settlement limitation:** The configured six-decimal SPL settlement mint may retain a freeze authority capable of freezing an escrow or holder account. Demo mint must have no freeze authority; program-side rejection remains future work.
 - **Verification:** cargo fmt --all -- --check; cargo test -p kase_treasury -q (5 passed); anchor build (exit 0); test TypeScript typecheck (passed); complete local-validator M2-M6 suite (13 passed); git diff --check (passed). Tests ran with Windows Node 24.21.0 from WSL because Linux Node is absent; direct validator + ts-mocha was used.
-- **Readiness:** No Critical issue confirmed; high escrow griefing fixed. Devnet remains BLOCKED on program-ID/keypair alignment, a throwaway deployer wallet, and a Devnet client/smoke script. Secret scanning used redacted high-confidence patterns; no matches were found in tracked history or current source. No Devnet state was changed.
+- **Readiness after M8A:** No Critical issue confirmed; high escrow griefing fixed. Program identity and guarded client are locally verified. Devnet remains un-deployed pending explicit approval, disposable operator/holder wallets, and funding. No Devnet state was changed.
+
+### M8A - Devnet blockers and client preparation
+
+**Status:** Program identity synchronized to the existing ignored keypair; Devnet config, guarded TypeScript client, and runbook prepared. Rust checks, full M2-M6 local validator suite, TypeScript checks, and end-to-end local demo passed. No Devnet transaction was submitted.
+
+- **Program ID:** `7P3NaKZkqSKHYjTUF638mZifpWMeVq1qvfPNNjtVFjWZ` across declaration, Anchor localnet/devnet entries, existing keypair public key, client guard, and rebuilt IDL.
+- **Client:** `scripts/devnet-demo.ts` uses Anchor and SPL RPC for issuance, snapshot, coupons, weighted votes, redemption, and final balances. Localnet is default; Devnet requires an explicit transaction guard, expected genesis hash, preexisting holder keypairs, and executable deployed program. It never creates or funds Devnet wallets.
+- **Time:** Demo maturity is 30 seconds locally and 120 seconds on Devnet. Client polls on-chain Clock with bounded timeouts.
+- **Security:** DSET is fabricated six-decimal test data with no freeze authority or value. Local holder secrets stay in memory and are not logged or committed.
+- **Dependencies:** WSL has Rust/Cargo, Solana CLI 2.1.0, Anchor 0.31.1, and a checksum-verified project-local Linux Node 24.21.0 under ignored `target/`. System and Windows Node tooling were left unchanged. No disposable Devnet deployer or holders are configured.
+- **Next:** Obtain explicit deployment approval, create/fund disposable wallets manually, then deploy and run the Devnet smoke sequence.
 
 ### M8 — Solana Devnet transactions
 

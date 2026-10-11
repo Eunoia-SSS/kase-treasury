@@ -8,7 +8,7 @@ use anchor_lang::solana_program::{
 use spl_token::instruction::AuthorityType;
 use spl_token::state::{Account as SplAccount, Mint as SplMint};
 
-declare_id!("8Lbkzg5shbLTZSz9y68YxgxpWE59VbHEVmj2XczZxR69");
+declare_id!("7P3NaKZkqSKHYjTUF638mZifpWMeVq1qvfPNNjtVFjWZ");
 
 pub const ISSUER: &[u8] = b"issuer";
 pub const BOND: &[u8] = b"bond";

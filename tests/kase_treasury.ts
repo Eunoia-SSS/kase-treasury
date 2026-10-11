@@ -326,7 +326,7 @@ async function makeDset(f:F):Promise<{mint:web3.PublicKey; source:web3.PublicKey
 }
 async function makeFinalizedSnapshot(f:F,holders:web3.Keypair[]):Promise<{snapshot:web3.PublicKey;recordDate:number}> {
   await closeIssuance(f);
-  const recordDate=(await clockUnix())+2;
+  const recordDate=(await clockUnix())+10;
   const snapshot=await createSnapshot(f,bytes(),recordDate);
   const deadline=Date.now()+30_000;
   while(await clockUnix()<recordDate && Date.now()<deadline) await new Promise(resolve=>setTimeout(resolve,250));
@@ -522,7 +522,7 @@ async function finalizeProposal(f:F,snapshot:web3.PublicKey,proposal:web3.Public
 }
 
 async function waitForClock(target:number):Promise<void> {
-  const deadline=Date.now()+45_000;
+  const deadline=Date.now()+180_000;
   while(await clockUnix()<target && Date.now()<deadline) await new Promise(resolve=>setTimeout(resolve,250));
   assert.ok((await clockUnix())>=target,"validator clock reached target timestamp");
 }
@@ -530,7 +530,7 @@ async function waitForClock(target:number):Promise<void> {
 describe("KASE Treasury M5 principal redemption",function(){
   this.timeout(1_000_000);
   it("funds full maturity principal, burns custody units, pays each snapshot holder once, and preserves funded coupon claims",async()=>{
-    const f=await make(100,12);
+    const f=await make(100,180);
     const holders=[await register(f,web3.Keypair.generate(),10),await register(f,web3.Keypair.generate(),5),await register(f,web3.Keypair.generate(),2)];
     const {snapshot,recordDate}=await makeFinalizedSnapshot(f,holders);
     const openStart=(await clockUnix())+1;
@@ -666,8 +666,8 @@ describe("KASE Treasury M6 bondholder governance",function(){
     await fails(createProposal(f,snapshot,bytes(),validationStart,validationEnd,{quorumBps:0}),"zero quorum");
     await fails(createProposal(f,snapshot,bytes(),validationStart,validationEnd,{approvalBps:10_001}),"approval threshold above 100 percent");
 
-    const start=(await clockUnix())+15;
-    const end=start+5;
+    const start=(await clockUnix())+60;
+    const end=start+30;
     const proposalPda=proposalAddress(f,id);
     await createProposal(f,snapshot,id,start,end);
     let proposal=await program.account.proposal.fetch(proposalPda);

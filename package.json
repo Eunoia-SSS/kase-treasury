@@ -8,7 +8,10 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test:anchor": "ts-mocha -p tests/tsconfig.json -t 1000000 tests/**/*.ts"
+    "typecheck:tests": "tsc --noEmit -p tests/tsconfig.json",
+    "test:anchor": "ts-mocha -p tests/tsconfig.json -t 1000000 tests/**/*.ts",
+    "demo:localnet": "ts-mocha -p tests/tsconfig.json -t 1000000 scripts/devnet-demo.ts",
+    "demo:devnet": "ts-mocha -p tests/tsconfig.json -t 1000000 scripts/devnet-demo.ts"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",

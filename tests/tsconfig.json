@@ -1,5 +1,11 @@
 {
   "extends": "../tsconfig.json",
-  "compilerOptions": { "module": "commonjs", "moduleResolution": "node", "noEmit": true, "target": "ES2020", "types": ["node", "mocha"] },
-  "include": ["./**/*.ts", "../target/types/**/*.ts"]
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "noEmit": true,
+    "target": "ES2020",
+    "types": ["node", "mocha"]
+  },
+  "include": ["./**/*.ts", "../scripts/**/*.ts", "../target/types/**/*.ts"]
 }

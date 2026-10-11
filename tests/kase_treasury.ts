@@ -180,7 +180,11 @@ async function snapshotBatch(f: F, snapshot: web3.PublicKey, start: number, size
   }).remainingAccounts(entries).rpc();
 }
 async function fetchSnapshotEntry(address: web3.PublicKey): Promise<{ registryIndex: number; holder: web3.PublicKey; units: bigint; recordDateTs: bigint }> {
-  const info = await provider.connection.getAccountInfo(address, "confirmed");
+  let info = await provider.connection.getAccountInfo(address, "confirmed");
+  for (let retry = 0; info === null && retry < 20; retry += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    info = await provider.connection.getAccountInfo(address, "confirmed");
+  }
   assert.ok(info, "snapshot entry account must exist");
   const data = Buffer.from(info.data);
   const discriminator = createHash("sha256").update("account:SnapshotEntry").digest().subarray(0, 8);

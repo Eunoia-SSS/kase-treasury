@@ -44,7 +44,7 @@ Bond mint decimals are 0 (whole bonds) and the classic SPL mint remains in PDA c
 
 ## Current project status
 
-Public Demo Mode uses deterministic fixture data and an interactive in-browser lifecycle state machine at /operations; it makes no RPC requests and sends no transactions. Live mode has account reads and wallet-approved transaction flows. M2-M6 pass Rust unit and Anchor local-validator tests; Devnet deployment has not occurred. The existing M9A baseline is deployed at https://kase-treasury.vercel.app; M9B changes are local and not deployed. The M9A browser-wallet Localnet flow still needs an end-user wallet smoke test. Tests are not an audit.
+Public Demo Mode uses deterministic fixture data and an interactive in-browser lifecycle state machine at /operations; it makes no RPC requests and sends no transactions. Live mode has account reads and wallet-approved transaction flows. M2-M6 pass Rust unit and Anchor local-validator tests; Devnet deployment has not occurred. The project website is provided at https://kase-treasury.vercel.app and the demo URL is https://kase-treasury.vercel.app/operations. The supplied routes returned successfully and the hosted five-step demo was replayed; the exact deployed commit was not cross-checked. The M9A browser-wallet Localnet flow still needs an end-user wallet smoke test. Tests are not an audit.
 
 
 ## M9B public simulation boundary

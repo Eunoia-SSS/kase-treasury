@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "typecheck:tests": "tsc --noEmit -p tests/tsconfig.json",
+    "test": "npm run test:demo",
     "test:anchor": "ts-mocha -p tests/tsconfig.json -t 1000000 tests/**/*.ts",
     "demo:localnet": "ts-mocha -p tests/tsconfig.json -t 1000000 scripts/devnet-demo.ts",
     "demo:devnet": "ts-mocha -p tests/tsconfig.json -t 1000000 scripts/devnet-demo.ts",

@@ -1,77 +1,90 @@
 # KASE Treasury
 
-KASE Treasury is an independent educational prototype exploring tokenized bond lifecycle management and corporate actions on Solana. It is intended for the Superteam Kazakhstan and KASE Corporate Actions on Blockchain challenge context. It is not an official KASE product and claims no partnership, endorsement, or approval.
+**Tokenized bond corporate actions, made inspectable.**
 
-The repository contains a Next.js dashboard with a transaction-free public Demo Mode and an optional wallet-signed Localnet interface and an Anchor program for issuer setup, bond issuance, holder registry, issuance closure, record-date snapshots, coupon settlement, principal redemption, and snapshot-weighted governance. The program is locally tested; it is not audited or production-ready. Devnet deployment has not been performed.
+KASE Treasury is an independent educational prototype exploring how Solana programs can represent a bond lifecycle: issuance, holder eligibility, coupon claims, maturity redemption, and snapshot-weighted governance. It was created in the context of the Superteam Kazakhstan x KASE Corporate Actions on Blockchain challenge. It is not an official KASE product and is not affiliated with, endorsed by, or approved by KASE.
 
-## Current foundation
+> **Demo notice:** The public `/operations` walkthrough is deterministic browser simulation. It does not connect a wallet, contact Solana, or execute transactions. The Anchor program has been tested against a local validator; it has not been deployed to Devnet.
 
-- Responsive Next.js App Router dashboard with a deterministic interactive public Demo Mode and a separate live Localnet/Devnet mode. Live registry, snapshots, coupon periods, redemptions, proposals, balances, and bond-account signatures are read from the selected RPC.
-- Anchor 0.31.1 workspace with classic SPL Token integration and M2-M6 lifecycle instructions.
-- Local-validator integration suite in `tests/kase_treasury.ts`.
-- Wallet Standard-compatible browser-wallet discovery; Anchor and SPL transactions request wallet approval. The frontend never reads issuer or investor key files.
-- Real Anchor/SPL RPC lifecycle demo in `scripts/devnet-demo.ts`. It defaults to localhost; Devnet transactions require an explicit guard, an exact Devnet genesis hash, and have not been run.
-- Program ID synchronized across source, localnet/devnet Anchor config, existing ignored local program keypair, generated IDL, and demo guard.
-- `.env.example` contains public configuration only.
+## Try it
 
-## Development
+- [KASE Treasury website](https://kase-treasury.vercel.app/)
+- [Interactive educational demo](https://kase-treasury.vercel.app/operations)
+- [GitHub repository](https://github.com/Eunoia-SSS/kase-treasury)
 
-Public Demo Mode is the default. For live local development, create .env.local with NEXT_PUBLIC_APP_MODE=live, NEXT_PUBLIC_SOLANA_CLUSTER=localnet, and NEXT_PUBLIC_LOCALNET_RPC_URL=http://127.0.0.1:8899. Start a validator with the program deployed (see DEVNET_RUNBOOK.md), run npm run dev, then connect a browser wallet configured for the same RPC. The app never reads local keypair files.
+The fixed 17-unit example assigns 10/5/2 bonds to Investors A/B/C; simulated coupon claims are 500/250/100 DSET; voting power is 10/5/2; simulated principal claims are 10,000/5,000/2,000 DSET. DSET is fabricated test data with no monetary value.
 
-For Vercel, keep NEXT_PUBLIC_APP_MODE=demo (or unset). The hosted demo uses fixed sample data and requires no validator or RPC access; all simulated activity is labeled and never presented as a Solana signature. Devnet live mode is not deployed.
+## Problem and approach
 
-Run Anchor commands in WSL Ubuntu with Rust/Cargo, Solana CLI 2.1.0, Anchor CLI 0.31.1, and Node.js/npm. This workspace has a portable Linux Node 24.21.0 in ignored `target/kase-node-v24.21.0`; add it to PATH with `export PATH="$PWD/target/kase-node-v24.21.0/bin:$PATH`. See the runbook to recreate it in a fresh checkout. The Windows Node installation was not changed.
+Corporate actions depend on clear answers to who qualified on a record date, how much each holder is owed, and whether each payment or vote was counted once. KASE Treasury prototypes an auditable flow by tying entitlements to a finalized on-chain snapshot and storing per-holder claim or vote receipts. It makes the eligibility source and lifecycle state explicit instead of treating an arbitrary historical token balance as authoritative.
+
+Solana programs and SPL Token accounts provide programmable state, signer constraints, and inspectable transactions. This is an educational design choice, not a claim that the project replaces regulated market infrastructure.
+
+## Implemented foundation
+
+- **Anchor M2-M6 program:** issuer and bond setup, SPL custody vault, beneficial-holder registry, issuance closure, immutable record-date snapshots, fully reserved coupon settlement, maturity redemption, and informational snapshot-weighted governance.
+- **Local validator tests:** Rust unit tests and Anchor integration tests exercise the program locally.
+- **Frontend:** six Next.js routes, public deterministic lifecycle simulation at `/operations`, and a separate wallet-connected live mode for Localnet/Devnet reads and signing workflows.
+- **Demo lifecycle:** issue 17 units; finalize a 10/5/2 snapshot; claim 850 simulated DSET coupon; finalize a 10/5/2 weighted vote; claim 17,000 simulated DSET principal and retire all units.
+
+The public simulation does not make its actions on-chain. Devnet deployment and Devnet transactions have not occurred.
+
+## Architecture and stack
+
+Next.js App Router, React, TypeScript, and Tailwind CSS form the web application. Demo Mode uses fixed in-memory state and does not call RPC. Live mode uses the checked-in Anchor IDL and Program ID with a compatible user-selected wallet to read accounts and request transaction signatures.
+
+The Anchor program uses classic SPL Token. Whole bond units (0 decimals) stay in a PDA-authorized vault; program-owned `Position` PDAs record beneficial holdings. Issuance closes before snapshots, preventing later issuance or transfers from changing eligibility. Bounded batches enumerate the sequential registry. Six-decimal demo settlement tokens are funded into event vaults before claims. Per-holder records prevent repeated claims or votes. Governance results do not execute amendments.
+
+**Stack:** Next.js 15, React 19, TypeScript, Tailwind CSS 4, Rust, Anchor 0.31.1, Solana CLI 2.1.0, classic SPL Token, Wallet Standard, Mocha/ts-mocha.
+
+See [architecture](./ARCHITECTURE.md), [product specification](./PRODUCT_SPEC.md), [protocol](./PROTOCOL_SPEC.md), [security model](./SECURITY_MODEL.md), and [Devnet runbook](./DEVNET_RUNBOOK.md).
+
+## Run locally
+
+Use WSL Ubuntu with Node.js/npm, Rust/Cargo, Solana CLI 2.1.0, and Anchor CLI 0.31.1 for the full project. See the runbook for toolchain setup.
 
 ```bash
-npm install
+npm ci
 npm run dev
-npm run lint
+```
+
+Open http://localhost:3000. Demo Mode is the default and needs no wallet, RPC endpoint, validator, or SOL. For the wallet-connected Localnet interface, follow [DEVNET_RUNBOOK.md](./DEVNET_RUNBOOK.md) and set `NEXT_PUBLIC_APP_MODE=live` in an untracked `.env.local`.
+
+## Verification
+
+```bash
 npm run typecheck
-npm run build
-```
-
-Run local tests:
-
-```bash
-anchor test
+./node_modules/.bin/eslint src
+npm run test
 npm run typecheck:tests
+npm run build
+cargo fmt --all -- --check
+cargo test -p kase_treasury -q
+anchor build
+npm run test:anchor
 ```
 
-If the Anchor wrapper cannot use Linux Node, use the direct ts-mocha procedure in [DEVNET_RUNBOOK.md](./DEVNET_RUNBOOK.md).
+`npm run test` runs deterministic simulation tests without a validator. `npm run test:anchor` requires the Anchor/Solana local-validator toolchain. Record actual results for the submission revision; prior passing results do not substitute for rerunning after a change.
 
-## Interactive public demo
+## Verification results from this review
 
-For this M9B source version, run the app locally and open /operations, then choose Start Demo. The existing public Vercel deployment has not been updated with M9B yet. Once this update is separately reviewed and deployed, judges can follow the same five steps in order: issue 17 sample bond units to Investors A/B/C; finalize their record-date snapshot; fund and claim 850 simulated DSET coupon; cast and finalize snapshot-weighted votes; then fund and claim 17,000 simulated DSET principal. You can revisit completed steps, and Reset Demo restarts the same deterministic example. The investor panel shows each holder’s units, claims, vote, and simulated DSET balances.
+- Frontend TypeScript check, source ESLint, test TypeScript check, and all 9 deterministic Demo Mode tests passed.
+- The Next.js production build succeeded. All six production routes returned HTTP 200 locally. The operations route rendered the simulation disclaimer.
+- Rust formatting passed; `cargo test -p kase_treasury -q` passed 5 tests; `anchor build` succeeded.
+- The first complete Localnet Anchor run reported 21 passing and 1 transient M3 SnapshotEntry account-read failure immediately after batch confirmation. The test helper now polls for confirmed account visibility for up to 5 seconds. After that test-only adjustment, the full suite passed: 22 passing.
+- The hosted home and operations routes opened. The five-step hosted walkthrough completed with the expected values at a 390px viewport and Reset returned it to its start state. The exact hosted source revision was not cross-checked.
+- `npm audit --omit=dev` reports 17 advisories (6 high, 11 moderate). Dependency upgrades were not made; see limitations.
 
-Every action in public Demo Mode is an in-browser simulation. It does not send RPC requests, request wallet signatures, use private keys, transfer tokens, create transaction signatures, or produce Explorer links. DSET has no monetary value. The public demo remains usable without a wallet, Devnet SOL, or a validator.
+## Limitations and safety
 
-## Live browser operations
+- No Devnet or Mainnet deployment has been performed.
+- Demo Mode is simulated and produces no Solana signature.
+- The program and frontend have not received an independent security audit and are not production-ready.
+- Beneficial positions use a custodial model; investors do not hold or directly transfer bond SPL tokens.
+- The registry is capped at 100 holders; live transaction history is bounded and there is no indexer.
+- Browser issuer/holder co-signing limitations are documented in the architecture and runbook.
+- No legal enforceability, regulated custody, KYC/AML, compliance, tax, or investment claim is made. Demo values are not money or a KZT peg.
 
-For local wallet-signed operations, set NEXT_PUBLIC_APP_MODE=live and use the /operations page with a running local validator and compatible wallet. It exposes issuer setup, bond creation, connected-holder registration, issuance close, snapshot batches/finalization, test DSET setup, coupon funding/claims, proposal creation/voting/finalization, and maturity redemption. Registration currently supports the connected issuer wallet as holder because the program requires both issuer and holder signatures; the frontend does not impersonate another holder.
+- A current production-dependency audit reports 17 advisories (6 high, 11 moderate). Several dependency fixes require major-version changes or have no compatible fix; this review did not upgrade dependencies. Assess before enabling live transactions.
 
-Live account history is limited to confirmed signatures touching the first 20 bond accounts, up to 10 signatures per bond. There is no indexer.
-
-## Local demo client
-
-The client runs issuance, snapshot, coupon settlement, weighted voting, maturity redemption, and final-state verification through real Anchor and SPL RPC calls. Local mode creates holder keypairs in memory only and funds them only from the local validator.
-
-```bash
-ANCHOR_PROVIDER_URL=http://127.0.0.1:8899 \
-ANCHOR_WALLET=target/localnet-wallet.json \
-KASE_DEMO_CLUSTER=localnet \
-npm run demo:localnet
-```
-
-Each run uses fresh random issuer, bond, proposal, and event IDs. Use a fresh local ledger for repeatable runs. The sample bond uses 1,000 six-decimal DSET face value, 10% annual coupon, and semiannual payments. The client creates a six-decimal DSET mint without freeze authority and mints 17,850 DSET for the 850 coupon and 17,000 principal. DSET is fabricated test data with no monetary value. Localnet maturity is 30 seconds; Devnet maturity is 120 seconds. The client polls the on-chain Clock and has bounded timeouts.
-
-## Environment and secrets
-
-Copy `.env.example` to `.env.local` only for local frontend configuration. Never put wallet keypairs, seed phrases, private keys, provider tokens, or other secrets in tracked files or any `NEXT_PUBLIC_*` variable. Devnet wallets must be disposable, created manually, and stored outside the repository with restrictive file permissions.
-
-## Specifications and status
-
-See [PRODUCT_SPEC.md](./PRODUCT_SPEC.md), [PROTOCOL_SPEC.md](./PROTOCOL_SPEC.md), [SECURITY_MODEL.md](./SECURITY_MODEL.md), [ARCHITECTURE.md](./ARCHITECTURE.md), [MASTER_PLAN.md](./MASTER_PLAN.md), and [DEVNET_RUNBOOK.md](./DEVNET_RUNBOOK.md).
-
-Bond units use a controlled SPL custody vault and Position PDAs; investors do not directly transfer SPL bond tokens. Issuance closes before snapshots. Coupon entitlements and governance weight use a finalized snapshot. Redemption waits for maturity, funds full principal, retires bond supply, and pays snapshot holders once. Governance results are informational only and execute no proposal. Public Demo Mode combines deterministic dashboard fixtures with the interactive simulated lifecycle on /operations; live mode has focused on-chain account and operations views. Analytical charts outside those views remain sample content.
-
-This prototype does not issue legally enforceable securities, provide investment, legal, tax, custody, or compliance advice, replace regulated infrastructure, or represent an official KASE product.
+This is a hackathon prototype only. Do not use real funds, production credentials, or valuable wallets.

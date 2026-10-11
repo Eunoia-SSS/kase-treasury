@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
-import { Activity, ArrowDownUp, Blocks, ChevronDown, CircleHelp, Command, FileClock, Landmark, LayoutDashboard, Menu, Search, Settings2, ShieldCheck, Vote, X } from "lucide-react";
+import { Activity, ArrowDownUp, Blocks, ChevronDown, CircleHelp, FileClock, Landmark, LayoutDashboard, Menu, ShieldCheck, Vote, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { ConnectionControls, RuntimeSidebarStatus } from "./connection-controls";
 import { useRuntime } from "@/chain/runtime-context";
@@ -56,8 +56,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
 
         <div className="sidebar-bottom">
           <RuntimeSidebarStatus />
-          <Link href="/transactions" className="nav-link"><CircleHelp size={17} strokeWidth={1.8} /><span>Documentation</span></Link>
-          <Link href="/" className="nav-link"><Settings2 size={17} strokeWidth={1.8} /><span>Settings</span></Link>
+          <a href="https://github.com/Eunoia-SSS/kase-treasury" target="_blank" rel="noreferrer" className="nav-link"><CircleHelp size={17} strokeWidth={1.8} /><span>Project documentation</span></a>
           <div className="profile-row"><div className="profile-avatar">◎</div><div className="profile-copy"><strong>{runtime.mode === "demo" ? "Sample issuer" : "Connected wallet"}</strong><span>{runtime.mode === "demo" ? "Illustrative profile" : "Current signer"}</span></div></div>
         </div>
       </aside>
@@ -70,8 +69,6 @@ export function DashboardShell({ children }: { children: ReactNode }) {
             <div className="breadcrumb"><span>Workspace</span><span className="breadcrumb-slash">/</span><strong>{primaryLinks.find((link) => link.href === pathname || (link.href !== "/" && pathname.startsWith(link.href)))?.label ?? "Overview"}</strong></div>
           </div>
           <div className="topbar-actions">
-            <button className="search-trigger"><Search size={15} /><span>Search anything...</span><kbd><Command size={11} /> K</kbd></button>
-            <div className="topbar-divider" />
             <ConnectionControls />
           </div>
         </header>

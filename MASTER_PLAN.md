@@ -17,7 +17,7 @@ The target workflow covers issuer setup, bond registry, snapshots, coupons, rede
 - **Tokens:** Bond units are whole tokens (0 decimals). M2 creates a classic SPL bond mint in a BondAuthority PDA vault. M4/M5 use an existing issuer-registered classic SPL six-decimal demo settlement mint; the program does not mint DSET.
 - **Registry/snapshot:** Position and sequential RegistryEntry PDAs use compact RegistryState and a 100-holder cap. Registration needs holder and issuer signatures. M3 requires issuance closure, forward-only Clock cutoff and batches of at most five sequential holders.
 - **History:** Confirmed transaction signatures and validated program accounts are authoritative. Optional indexer is only a read accelerator.
-- **Release:** Local validator first, then Devnet only. The current M9A frontend has GitHub and Vercel hosting; M9B release remains a later step and must not overwrite remote work or expose secrets. No Mainnet deployment.
+- **Release:** Local validator first, then Devnet only. The project has a GitHub repository and hosted website. The hosted build's exact commit must be verified separately. No Devnet or Mainnet deployment has occurred.
 
 ## Milestones
 
@@ -144,6 +144,8 @@ The target workflow covers issuer setup, bond registry, snapshots, coupons, rede
 
 ### M10 — GitHub workflow and project documentation
 
+**Status:** The project has a GitHub remote and repository URL. This submission review made no remote changes; signed-out repository visibility and a full history secret scan remain unverified.
+
 - **Tasks:** Confirm URL/ownership; inspect branch/remotes/history; audit secrets and generated files; fetch/reconcile without force; add reproducibility docs and CI.
 - **Dependencies:** User-verified remote and publishing authorization.
 - **Acceptance:** Correct branch/latest commit verified; no secrets in history; unrelated repositories untouched.
@@ -151,17 +153,19 @@ The target workflow covers issuer setup, bond registry, snapshots, coupons, rede
 
 ### M11 — Vercel frontend deployment
 
-**Status:** The existing M9A baseline is deployed at https://kase-treasury.vercel.app. The M9B changes in this working tree have not been pushed or deployed.
+**Status:** The six hosted routes opened and showed headings/prototype notices. The operations walkthrough completed at a 390px viewport with the expected coupon, voting, principal, and zero-supply results; reset returned to the initial screen. The exact deployed commit was not cross-checked. Desktop visual and deeper keyboard/accessibility checks remain.
 
-- **Tasks:** After separate approval, publish the reviewed M9B source, deploy the updated public Demo Mode, and verify labels/routes. Configure public cluster/program settings only for an explicitly approved live mode.
-- **Dependencies:** Reviewed M9B diff and separate GitHub/Vercel authorization; Devnet is not required for Demo Mode.
+- **Tasks:** Keep public mode on deterministic Demo Mode; verify all six hosted routes, labels, replay/reset, and responsive layout against the submitted build. Configure live cluster/program settings only for an explicitly approved live mode.
+- **Dependencies:** A reviewed source revision and authorized GitHub/Vercel release; Devnet is not required for Demo Mode.
 - **Acceptance:** Hosted Demo Mode follows the deterministic walkthrough without a validator, wallet prompts, RPC access, or secret configuration.
 
-### M12 — Hackathon documentation and demonstration
+### M12 - Hackathon documentation and demonstration
 
-- **Tasks:** Prepare problem/user flow, architecture, threat model, limitations, Devnet guide, judge walkthrough and evidence; claim only verified functionality.
-- **Dependencies:** M8 and preferably M9; no implied KASE endorsement.
-- **Acceptance:** Reviewers can replay and verify results and distinguish mock/planned/live behavior.
+**Status:** Submission copy, video script, and checklist are prepared in SUBMISSION.md, DEMO_VIDEO_SCRIPT.md, and SUBMISSION_CHECKLIST.md. The hosted flow was browser-checked; full Localnet suite rerun after a test-only retry adjustment, video recording, and contest form checks remain.
+
+- **Tasks:** Verify problem/user flow, architecture, limitations, Devnet status, judge walkthrough and evidence; claim only verified functionality.
+- **Dependencies:** M8 and M9; no implied KASE endorsement.
+- **Acceptance:** Reviewers can replay and verify results and distinguish simulation, locally tested program, and any future deployed behavior.
 
 ## Cross-cutting security and correctness rules
 
@@ -184,7 +188,7 @@ The target workflow covers issuer setup, bond registry, snapshots, coupons, rede
 
 ## Current status and next gate
 
-M1-M8A documentation, program work, local integration, and demo client status are recorded above. M9A connects the frontend to Localnet/Devnet behind a live-mode setting. M9B adds an interactive deterministic public lifecycle simulation that never calls RPC or signs transactions. Devnet remains un-deployed and unfunded. The M9B changes are local and have not been pushed or deployed.
+M1-M8A documentation, program work, local integration, and demo client status are recorded above. M9A connects the frontend to Localnet/Devnet behind a live-mode setting. M9B adds an interactive deterministic public lifecycle simulation that never calls RPC or signs transactions. Devnet remains un-deployed and unfunded. The exact hosted revision is not verified by the current M10 review. The source branch and local verification must be reported independently from hosted behavior.
 
 
 ### M9A — Frontend integration with Localnet

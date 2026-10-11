@@ -12,6 +12,7 @@ import { useRuntime } from "@/chain/runtime-context";
 import { useChainState } from "@/chain/use-chain";
 import { displayStatus } from "@/chain/data";
 import { issuerIdFor, pda, randomId, seeds } from "@/chain/keys";
+import { InteractiveDemo } from "./interactive-demo";
 
 const SYS=SystemProgram.programId, TOKEN=TOKEN_PROGRAM_ID, RENT=new PublicKey("SysvarRent111111111111111111111111111111111"), UNIT=1000000n;
 type TxEntry={label:string;state:"pending"|"confirmed"|"failed";signature?:string;error?:string};
@@ -41,7 +42,7 @@ export function OperationsConsole(){
   try{const sig=await task();await connection.confirmTransaction(sig,"confirmed");setTxs(cur=>[{label,state:"confirmed",signature:sig},...cur.filter(x=>x.state!=="pending")]);await chain.refresh();return sig;}
   catch(e){setTxs(cur=>[{label,state:"failed",error:e instanceof Error?e.message:"Transaction failed."},...cur.filter(x=>x.state!=="pending")]);throw e;}
  }
- if(runtime.mode==="demo")return <DemoOperations/>;
+ if(runtime.mode==="demo")return <InteractiveDemo/>;
  if(!authority||!wallet.connected)return <><PageHeading eyebrow="LIVE OPERATIONS" title="Issuer & holder operations" description="Connect a browser wallet to read Localnet accounts and submit wallet-signed transactions."/><div className="inline-info"><ShieldCheck size={17}/><span><strong>No wallet key files are read.</strong> Registration requires the issuer authority and holder signatures; this initial interface only registers the connected issuer wallet as a holder.</span></div></>;
  if(runtime.cluster==="devnet"&&chain.programReady!==true)return <><PageHeading eyebrow="DEVNET NOT DEPLOYED" title="Operations unavailable" description="No configured KASE Treasury program is deployed to Devnet."/><div className="inline-info"><CircleAlert size={17}/><span>Devnet transactions are disabled until deployment is separately approved and the program is deployed. Switch to Localnet for the validator demo.</span></div></>;
  const need=()=>{if(!program||!config||!authority)throw Error("Connect a wallet and check the program status.");return{program,config,authority};};
@@ -124,4 +125,3 @@ export function OperationsConsole(){
 }
 function Field({label,value,onChange,type="text"}:{label:string;value:string;onChange:(s:string)=>void;type?:string}){return <label className="operation-field"><span>{label}</span><input type={type} value={value} onChange={e=>onChange(e.target.value)}/></label>}
 function DataItem({label,value}:{label:string;value:string}){return <div className="live-data-item"><span>{label}</span><strong>{value}</strong></div>}
-function DemoOperations(){return <><PageHeading eyebrow="PUBLIC DEMO MODE" title="Corporate actions walkthrough" description="Explore deterministic examples without connecting a wallet or sending transactions."/><div className="public-demo-banner"><ShieldCheck size={18}/><div><strong>Simulated transactions only</strong><span>Fixed sample data is used. No RPC requests, wallet prompts, signatures, or token transfers occur in this mode.</span></div></div><div className="demo-step-grid">{["Issue 17 demo bond units to holders A, B and C","Finalize one immutable record-date snapshot","Claim 500 / 250 / 100 DSET coupons","Vote with snapshot weights 10 / 5 / 2","Redeem 10,000 / 5,000 / 2,000 DSET principal"].map((s,i)=><Card className="demo-step" key={s}><span>{"0"+(i+1)}</span><strong>{s}</strong><small>Illustrative only · no Solana transaction</small></Card>)}</div><div className="inline-info"><CircleAlert size={17}/><span>Live controls require a local build with <code>NEXT_PUBLIC_APP_MODE=live</code>, a running validator, deployed program, and a compatible browser wallet.</span></div></>}

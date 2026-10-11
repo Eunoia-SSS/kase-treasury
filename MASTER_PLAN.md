@@ -8,16 +8,16 @@ This file is the primary development roadmap. M1 specifications define the demon
 
 ## Product scope
 
-The target workflow covers issuer setup, bond registry, snapshots, coupons, redemption, governance, and verifiable transaction history. The Next.js app remains a mock dashboard. M2 issuance/registry, M3 snapshots, M4 coupon settlement, M5 principal redemption, and M6 snapshot-weighted governance are implemented and local-validator-tested. Wallet client and deployment remain unimplemented. See [PRODUCT_SPEC.md](./PRODUCT_SPEC.md), [PROTOCOL_SPEC.md](./PROTOCOL_SPEC.md), [SECURITY_MODEL.md](./SECURITY_MODEL.md), and [ARCHITECTURE.md](./ARCHITECTURE.md).
+The target workflow covers issuer setup, bond registry, snapshots, coupons, redemption, governance, and verifiable transaction history. The Next.js app includes a deterministic interactive public Demo Mode plus a separate M9A wallet-connected Localnet/Devnet frontend. M2 issuance/registry, M3 snapshots, M4 coupon settlement, M5 principal redemption, and M6 snapshot-weighted governance are implemented and local-validator-tested. No Devnet transactions have been run. See [PRODUCT_SPEC.md](./PRODUCT_SPEC.md), [PROTOCOL_SPEC.md](./PROTOCOL_SPEC.md), [SECURITY_MODEL.md](./SECURITY_MODEL.md), and [ARCHITECTURE.md](./ARCHITECTURE.md).
 
 ## Proposed architecture
 
-- **Web:** Next.js App Router, TypeScript, Tailwind CSS, reusable components, and a typed data-access boundary. Mock fixtures are the current source.
-- **Program:** M2 issuer, bond, custody, registry, issuance and closure; M3 snapshots; M4 coupon configuration, funding, and claims; M5 principal redemption; and M6 informational governance are implemented and local-validator-tested. Frontend chain workflows remain future work.
+- **Web:** Next.js App Router, TypeScript, Tailwind CSS, reusable components, and a typed data-access boundary. Public Demo Mode is a deterministic interactive simulation; live data comes from the selected RPC.
+- **Program:** M2 issuer, bond, custody, registry, issuance and closure; M3 snapshots; M4 coupon configuration, funding, and claims; M5 principal redemption; and M6 informational governance are implemented and local-validator-tested. M9A adds live frontend account reads and wallet-approved workflows.
 - **Tokens:** Bond units are whole tokens (0 decimals). M2 creates a classic SPL bond mint in a BondAuthority PDA vault. M4/M5 use an existing issuer-registered classic SPL six-decimal demo settlement mint; the program does not mint DSET.
 - **Registry/snapshot:** Position and sequential RegistryEntry PDAs use compact RegistryState and a 100-holder cap. Registration needs holder and issuer signatures. M3 requires issuance closure, forward-only Clock cutoff and batches of at most five sequential holders.
 - **History:** Confirmed transaction signatures and validated program accounts are authoritative. Optional indexer is only a read accelerator.
-- **Release:** Local validator first, then Devnet only. GitHub and Vercel work are later milestones and must not overwrite remote work or expose secrets. No Mainnet deployment.
+- **Release:** Local validator first, then Devnet only. The current M9A frontend has GitHub and Vercel hosting; M9B release remains a later step and must not overwrite remote work or expose secrets. No Mainnet deployment.
 
 ## Milestones
 
@@ -151,9 +151,11 @@ The target workflow covers issuer setup, bond registry, snapshots, coupons, rede
 
 ### M11 — Vercel frontend deployment
 
-- **Tasks:** Connect reviewed GitHub repo, configure public cluster/program settings, deploy preview and verify labels/routes.
-- **Dependencies:** Approval, M9, M10 and verified Devnet program.
-- **Acceptance:** Preview works without secret leakage and matches reviewed commit.
+**Status:** The existing M9A baseline is deployed at https://kase-treasury.vercel.app. The M9B changes in this working tree have not been pushed or deployed.
+
+- **Tasks:** After separate approval, publish the reviewed M9B source, deploy the updated public Demo Mode, and verify labels/routes. Configure public cluster/program settings only for an explicitly approved live mode.
+- **Dependencies:** Reviewed M9B diff and separate GitHub/Vercel authorization; Devnet is not required for Demo Mode.
+- **Acceptance:** Hosted Demo Mode follows the deterministic walkthrough without a validator, wallet prompts, RPC access, or secret configuration.
 
 ### M12 — Hackathon documentation and demonstration
 
@@ -182,7 +184,7 @@ The target workflow covers issuer setup, bond registry, snapshots, coupons, rede
 
 ## Current status and next gate
 
-M1-M8A documentation, program work, local integration, and demo client status are recorded above. M9A connects the frontend to Localnet/Devnet behind a live-mode setting and preserves a transaction-free public Demo Mode. Frontend typecheck, source lint, production build, test typecheck, and all 13 M2-M6 local-validator tests pass. Devnet remains un-deployed and unfunded; no push or Vercel deployment has occurred.
+M1-M8A documentation, program work, local integration, and demo client status are recorded above. M9A connects the frontend to Localnet/Devnet behind a live-mode setting. M9B adds an interactive deterministic public lifecycle simulation that never calls RPC or signs transactions. Devnet remains un-deployed and unfunded. The M9B changes are local and have not been pushed or deployed.
 
 
 ### M9A — Frontend integration with Localnet
@@ -197,3 +199,13 @@ M1-M8A documentation, program work, local integration, and demo client status ar
 - Dependencies: Wallet Standard React adapter 1.1.8 and wallet-adapter-base 0.9.28 are used with web3.js 1.99.0; Anchor 0.31.1 and SPL Token 0.4.13 are runtime dependencies.
 - Verification: frontend lint, app typecheck, production build, test typecheck, and the full 13-case M2-M6 local-validator suite pass. Production HTTP smoke checks return 200 for all six routes. A browser-wallet Localnet signature smoke test remains.
 - Limitations: no multi-wallet co-signing for issuer plus unrelated holder; no indexer or complete on-chain history; browser DSET setup is for local test mints; Devnet deployment and transactions await approval and funding.
+
+
+### M9B — Interactive public demo
+
+**Status:** Implemented locally; not pushed or redeployed.
+
+- /operations now guides judges through five ordered, replayable-in-memory steps: issue 17 bond units, finalize a 10/5/2 holder snapshot, fund and claim 850 simulated DSET coupon, cast/finalize weighted votes (10 YES, 5 NO, 2 ABSTAIN), and fund/claim 17,000 simulated DSET principal. A reset restarts the fixed scenario.
+- The pure TypeScript simulation reducer rejects out-of-order actions, duplicate claims/votes, premature finalization, and claims exceeding remaining simulated reserves. It uses no RPC, wallet, private key, transaction signature, or Explorer link.
+- **Verification:** npm run typecheck, frontend source ESLint, npm run typecheck:tests, npm run test:demo (9 passing), npm run build, production HTTP smoke test (all six routes return 200), git diff --check, and the combined npm run test:anchor suite (22 passing). The production build uses the bigint JavaScript fallback; ts-mocha reports Node's module-type performance warning.
+- **Next:** the code is locally ready for review. The existing Vercel site still runs the prior build; publishing these changes requires a later approved GitHub/Vercel release.

@@ -6,7 +6,7 @@ The repository contains a Next.js dashboard with a transaction-free public Demo 
 
 ## Current foundation
 
-- Responsive Next.js App Router dashboard with deterministic public Demo Mode and a separate live Localnet/Devnet mode. Live registry, snapshots, coupon periods, redemptions, proposals, balances, and bond-account signatures are read from the selected RPC.
+- Responsive Next.js App Router dashboard with a deterministic interactive public Demo Mode and a separate live Localnet/Devnet mode. Live registry, snapshots, coupon periods, redemptions, proposals, balances, and bond-account signatures are read from the selected RPC.
 - Anchor 0.31.1 workspace with classic SPL Token integration and M2-M6 lifecycle instructions.
 - Local-validator integration suite in `tests/kase_treasury.ts`.
 - Wallet Standard-compatible browser-wallet discovery; Anchor and SPL transactions request wallet approval. The frontend never reads issuer or investor key files.
@@ -39,9 +39,15 @@ npm run typecheck:tests
 
 If the Anchor wrapper cannot use Linux Node, use the direct ts-mocha procedure in [DEVNET_RUNBOOK.md](./DEVNET_RUNBOOK.md).
 
-## Browser operations
+## Interactive public demo
 
-The /operations page exposes wallet-signed workflows for issuer initialization, bond creation, connected-holder registration, issuance close, snapshot batches/finalization, demo DSET setup, coupon funding/claims, proposal creation/voting/finalization, and maturity redemption. Registration currently supports the connected issuer wallet as holder because the program requires both issuer and holder signatures. The frontend does not impersonate another holder.
+For this M9B source version, run the app locally and open /operations, then choose Start Demo. The existing public Vercel deployment has not been updated with M9B yet. Once this update is separately reviewed and deployed, judges can follow the same five steps in order: issue 17 sample bond units to Investors A/B/C; finalize their record-date snapshot; fund and claim 850 simulated DSET coupon; cast and finalize snapshot-weighted votes; then fund and claim 17,000 simulated DSET principal. You can revisit completed steps, and Reset Demo restarts the same deterministic example. The investor panel shows each holder’s units, claims, vote, and simulated DSET balances.
+
+Every action in public Demo Mode is an in-browser simulation. It does not send RPC requests, request wallet signatures, use private keys, transfer tokens, create transaction signatures, or produce Explorer links. DSET has no monetary value. The public demo remains usable without a wallet, Devnet SOL, or a validator.
+
+## Live browser operations
+
+For local wallet-signed operations, set NEXT_PUBLIC_APP_MODE=live and use the /operations page with a running local validator and compatible wallet. It exposes issuer setup, bond creation, connected-holder registration, issuance close, snapshot batches/finalization, test DSET setup, coupon funding/claims, proposal creation/voting/finalization, and maturity redemption. Registration currently supports the connected issuer wallet as holder because the program requires both issuer and holder signatures; the frontend does not impersonate another holder.
 
 Live account history is limited to confirmed signatures touching the first 20 bond accounts, up to 10 signatures per bond. There is no indexer.
 
@@ -66,6 +72,6 @@ Copy `.env.example` to `.env.local` only for local frontend configuration. Never
 
 See [PRODUCT_SPEC.md](./PRODUCT_SPEC.md), [PROTOCOL_SPEC.md](./PROTOCOL_SPEC.md), [SECURITY_MODEL.md](./SECURITY_MODEL.md), [ARCHITECTURE.md](./ARCHITECTURE.md), [MASTER_PLAN.md](./MASTER_PLAN.md), and [DEVNET_RUNBOOK.md](./DEVNET_RUNBOOK.md).
 
-Bond units use a controlled SPL custody vault and Position PDAs; investors do not directly transfer SPL bond tokens. Issuance closes before snapshots. Coupon entitlements and governance weight use a finalized snapshot. Redemption waits for maturity, funds full principal, retires bond supply, and pays snapshot holders once. Governance results are informational only and execute no proposal. Public Demo Mode remains deterministic mock data; live mode has focused on-chain account and operations views. Analytical charts outside those views remain sample content.
+Bond units use a controlled SPL custody vault and Position PDAs; investors do not directly transfer SPL bond tokens. Issuance closes before snapshots. Coupon entitlements and governance weight use a finalized snapshot. Redemption waits for maturity, funds full principal, retires bond supply, and pays snapshot holders once. Governance results are informational only and execute no proposal. Public Demo Mode combines deterministic dashboard fixtures with the interactive simulated lifecycle on /operations; live mode has focused on-chain account and operations views. Analytical charts outside those views remain sample content.
 
 This prototype does not issue legally enforceable securities, provide investment, legal, tax, custody, or compliance advice, replace regulated infrastructure, or represent an official KASE product.

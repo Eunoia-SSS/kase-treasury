@@ -11,7 +11,8 @@
     "typecheck:tests": "tsc --noEmit -p tests/tsconfig.json",
     "test:anchor": "ts-mocha -p tests/tsconfig.json -t 1000000 tests/**/*.ts",
     "demo:localnet": "ts-mocha -p tests/tsconfig.json -t 1000000 scripts/devnet-demo.ts",
-    "demo:devnet": "ts-mocha -p tests/tsconfig.json -t 1000000 scripts/devnet-demo.ts"
+    "demo:devnet": "ts-mocha -p tests/tsconfig.json -t 1000000 scripts/devnet-demo.ts",
+    "test:demo": "ts-mocha -p tests/tsconfig.json -t 100000 tests/demo_lifecycle.ts"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.31.1",

@@ -4,7 +4,7 @@
 
 ## Current implementation
 
-Frontend: Next.js dashboard with deterministic public Demo Mode and live Localnet/Devnet mode, responsive shell, Wallet Standard discovery, typed Anchor client, account readers, wallet-signed transaction console, and fixtures used only in Demo Mode.
+Frontend: Next.js dashboard with a deterministic interactive public Demo Mode and a separate live Localnet/Devnet mode, responsive shell, Wallet Standard discovery, typed Anchor client, account readers, wallet-signed transaction console, and fixtures used only in Demo Mode.
 
 Anchor workspace (M2-M6 implemented; localnet only): Anchor.toml pins Anchor 0.31.1/Solana 2.1.0; Cargo workspace/lockfile are present; programs/kase_treasury/src/lib.rs contains issuer, bond, registry, SPL mint/vault, issuance, closure, snapshots, errors and events. tests/kase_treasury.ts contains validator tests.
 
@@ -44,4 +44,11 @@ Bond mint decimals are 0 (whole bonds) and the classic SPL mint remains in PDA c
 
 ## Current project status
 
-Public Demo Mode uses static mock fixtures; live mode has account reads and wallet-approved transaction flows. M2-M6 pass Rust unit and Anchor local-validator tests. Coupon settlement, redemption, and governance are local-validator-only; Devnet deployment has not occurred; browser-wallet Localnet flows require local validation. M2-M6 are on the main branch tracked by origin. M7 review changes are local and unpushed. Vercel is not configured. Tests are not an audit. Devnet deployment remains unfunded and unapproved. The browser Localnet interface is wired but still needs an end-user wallet smoke test; no Devnet deployment has occurred.
+Public Demo Mode uses deterministic fixture data and an interactive in-browser lifecycle state machine at /operations; it makes no RPC requests and sends no transactions. Live mode has account reads and wallet-approved transaction flows. M2-M6 pass Rust unit and Anchor local-validator tests; Devnet deployment has not occurred. The existing M9A baseline is deployed at https://kase-treasury.vercel.app; M9B changes are local and not deployed. The M9A browser-wallet Localnet flow still needs an end-user wallet smoke test. Tests are not an audit.
+
+
+## M9B public simulation boundary
+
+The /operations page presents the five-step public walkthrough using a pure TypeScript reducer and fixed sample inputs. It simulates issuance, an immutable record-date snapshot, coupon escrow/claims, snapshot-weighted governance, and principal redemption in browser memory. Integer DSET amounts and the documented inclusive 50% quorum / strict greater-than-50% decisive-vote approval rule are tested independently. Reset returns the exact initial state. The simulation code has no RPC, wallet, key, signature, or Explorer dependency.
+
+The M9A live operations component remains a separate runtime branch selected by NEXT_PUBLIC_APP_MODE=live; its Localnet/Devnet transaction paths are not used by the public simulation. The demo does not prove that browser wallet transactions were exercised, nor does local-validator testing imply Devnet deployment or an audit.

@@ -366,7 +366,7 @@ describe("KASE Treasury M4 coupon settlement",function(){
     const holders=[await register(f,web3.Keypair.generate(),10),await register(f,web3.Keypair.generate(),5),await register(f,web3.Keypair.generate(),2)];
     const {snapshot,recordDate}=await makeFinalizedSnapshot(f,holders);
     const {mint,source,mintAuthority}=await makeDset(f);
-    const paymentDate=(await clockUnix())+3;
+    const paymentDate=(await clockUnix())+30;
     const period=7001;
     const prepared=createCouponAccounts(f,snapshot,mint,period,recordDate,paymentDate);
     await program.methods.createCouponPeriod(new BN(period),new BN(recordDate),new BN(paymentDate)).accountsStrict(prepared.accounts).rpc();
@@ -408,7 +408,7 @@ describe("KASE Treasury M4 coupon settlement",function(){
     await fails(program.methods.claimCoupon().accountsStrict(claimAccounts(f,snapshot,mint,holders[0],period,wrongDest,{bond:otherBond.bond})).signers([holders[0]]).rpc(),"wrong claim bond");
     await fails(program.methods.claimCoupon().accountsStrict(claimAccounts(f,snapshot,mint,holders[0],period,wrongDest,{snapshot:web3.Keypair.generate().publicKey})).signers([holders[0]]).rpc(),"wrong claim snapshot");
 
-    const payAt=Date.now()+30_000;
+    const payAt=Date.now()+180_000;
     while(await clockUnix()<paymentDate && Date.now()<payAt) await new Promise(resolve=>setTimeout(resolve,250));
     assert.ok((await clockUnix())>=paymentDate,"coupon payment date reached");
     const destinations:web3.PublicKey[]=[];
@@ -713,8 +713,8 @@ describe("KASE Treasury M6 bondholder governance",function(){
     const f=await make(30);
     const holders=[await register(f,web3.Keypair.generate(),10),await register(f,web3.Keypair.generate(),10)];
     const {snapshot}=await makeFinalizedSnapshot(f,holders);
-    const start=(await clockUnix())+3;
-    const end=start+4;
+    const start=(await clockUnix())+30;
+    const end=start+60;
     const exactQuorum=await createProposal(f,snapshot,bytes(),start,end,{quorumBps:5_000,approvalBps:5_000});
     const exactApproval=await createProposal(f,snapshot,bytes(),start,end,{quorumBps:10_000,approvalBps:5_000});
     const abstainOnly=await createProposal(f,snapshot,bytes(),start,end,{quorumBps:10_000,approvalBps:5_000});

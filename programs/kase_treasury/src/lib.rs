@@ -3,6 +3,7 @@ use anchor_lang::solana_program::{
     program::{invoke, invoke_signed},
     program_option::COption,
     program_pack::Pack,
+    system_instruction,
 };
 use spl_token::instruction::AuthorityType;
 use spl_token::state::{Account as SplAccount, Mint as SplMint};
@@ -17,7 +18,10 @@ pub const VAULT: &[u8] = b"bond_vault";
 pub const REGISTRY: &[u8] = b"registry";
 pub const POSITION: &[u8] = b"position";
 pub const REGISTRY_ENTRY: &[u8] = b"registry_entry";
+pub const SNAPSHOT: &[u8] = b"snapshot";
+pub const SNAPSHOT_ENTRY: &[u8] = b"snapshot_entry";
 pub const MAX_HOLDERS: usize = 100;
+pub const MAX_SNAPSHOT_BATCH: u8 = 5;
 
 #[program]
 pub mod kase_treasury {
@@ -328,6 +332,325 @@ pub mod kase_treasury {
         });
         Ok(())
     }
+
+    pub fn create_snapshot(
+        ctx: Context<CreateSnapshot>,
+        snapshot_id: [u8; 32],
+        record_date_ts: i64,
+    ) -> Result<()> {
+        require!(snapshot_id != [0; 32], ErrorCode::InvalidSnapshotId);
+        require!(
+            ctx.accounts.bond.status == Status::IssuanceClosed,
+            ErrorCode::IssuanceNotClosed
+        );
+        let clock = Clock::get()?;
+        require!(
+            record_date_ts >= clock.unix_timestamp,
+            ErrorCode::RetroactiveSnapshot
+        );
+        let count = ctx.accounts.registry.count;
+        let units = ctx.accounts.registry.total_units;
+        require!(count > 0 && units > 0, ErrorCode::EmptySnapshot);
+        require!(usize::from(count) <= MAX_HOLDERS, ErrorCode::RegistryFull);
+        require!(
+            ctx.accounts.bond.outstanding == units,
+            ErrorCode::SnapshotTotalMismatch
+        );
+        check_closed_supply(
+            &ctx.accounts.bond,
+            &ctx.accounts.registry,
+            &ctx.accounts.mint,
+            &ctx.accounts.vault,
+        )?;
+
+        let snapshot = &mut ctx.accounts.snapshot;
+        snapshot.bond = ctx.accounts.bond.key();
+        snapshot.snapshot_id = snapshot_id;
+        snapshot.issuer = ctx.accounts.authority.key();
+        snapshot.record_date_ts = record_date_ts;
+        snapshot.created_at_ts = clock.unix_timestamp;
+        snapshot.created_slot = clock.slot;
+        snapshot.finalized_at_ts = 0;
+        snapshot.finalized_slot = 0;
+        snapshot.expected_holder_count = count;
+        snapshot.processed_holder_count = 0;
+        snapshot.next_index = 0;
+        snapshot.expected_total_units = units;
+        snapshot.total_units = 0;
+        snapshot.status = SnapshotStatus::Scheduled;
+        snapshot.bump = ctx.bumps.snapshot;
+        emit!(SnapshotCreated {
+            snapshot: snapshot.key(),
+            bond: snapshot.bond,
+            record_date_ts,
+            expected_holder_count: count,
+            expected_total_units: units,
+        });
+        Ok(())
+    }
+
+    pub fn process_snapshot_batch<'info>(
+        ctx: Context<'_, '_, '_, 'info, ProcessSnapshotBatch<'info>>,
+        start_index: u8,
+        batch_size: u8,
+    ) -> Result<()> {
+        let clock = Clock::get()?;
+        let snapshot = &ctx.accounts.snapshot;
+        require!(
+            snapshot.status != SnapshotStatus::Finalized,
+            ErrorCode::SnapshotFinalized
+        );
+        require!(
+            clock.unix_timestamp >= snapshot.record_date_ts,
+            ErrorCode::SnapshotNotDue
+        );
+        require!(
+            ctx.accounts.bond.status == Status::IssuanceClosed,
+            ErrorCode::IssuanceNotClosed
+        );
+        require!(
+            start_index == snapshot.next_index,
+            ErrorCode::SnapshotIndexMismatch
+        );
+        require!(
+            batch_size > 0 && batch_size <= MAX_SNAPSHOT_BATCH,
+            ErrorCode::InvalidSnapshotBatch
+        );
+        let end_index = start_index
+            .checked_add(batch_size)
+            .ok_or(ErrorCode::Overflow)?;
+        require!(
+            end_index <= snapshot.expected_holder_count,
+            ErrorCode::SnapshotIndexMismatch
+        );
+        let expected_accounts = usize::from(batch_size)
+            .checked_mul(3)
+            .ok_or(ErrorCode::Overflow)?;
+        require!(
+            ctx.remaining_accounts.len() == expected_accounts,
+            ErrorCode::InvalidSnapshotBatch
+        );
+        require!(
+            ctx.accounts.registry.count == snapshot.expected_holder_count,
+            ErrorCode::SnapshotCountMismatch
+        );
+        require!(
+            ctx.accounts.registry.total_units == snapshot.expected_total_units
+                && ctx.accounts.bond.outstanding == snapshot.expected_total_units,
+            ErrorCode::SnapshotTotalMismatch
+        );
+        check_closed_supply(
+            &ctx.accounts.bond,
+            &ctx.accounts.registry,
+            &ctx.accounts.mint,
+            &ctx.accounts.vault,
+        )?;
+
+        let bond_key = ctx.accounts.bond.key();
+        let snapshot_key = ctx.accounts.snapshot.key();
+        let record_date_ts = ctx.accounts.snapshot.record_date_ts;
+        let mut batch_units = 0u64;
+        for offset in 0..batch_size {
+            let index = start_index.checked_add(offset).ok_or(ErrorCode::Overflow)?;
+            let base = usize::from(offset)
+                .checked_mul(3)
+                .ok_or(ErrorCode::Overflow)?;
+            let registry_info = &ctx.remaining_accounts[base];
+            let position_info = &ctx.remaining_accounts[base + 1];
+            let snapshot_entry_info = &ctx.remaining_accounts[base + 2];
+
+            let index_seed = [index];
+            let expected_registry = Pubkey::find_program_address(
+                &[REGISTRY_ENTRY, bond_key.as_ref(), &index_seed],
+                ctx.program_id,
+            )
+            .0;
+            require_keys_eq!(
+                registry_info.key(),
+                expected_registry,
+                ErrorCode::InvalidRegistryEntry
+            );
+            require_keys_eq!(
+                *registry_info.owner,
+                *ctx.program_id,
+                ErrorCode::InvalidRegistryEntry
+            );
+            let registered = read_registry_entry(registry_info)?;
+            require_keys_eq!(registered.bond, bond_key, ErrorCode::InvalidRegistryEntry);
+            require!(
+                registered.index == index && registered.holder != Pubkey::default(),
+                ErrorCode::InvalidRegistryEntry
+            );
+
+            let expected_position = Pubkey::find_program_address(
+                &[POSITION, bond_key.as_ref(), registered.holder.as_ref()],
+                ctx.program_id,
+            )
+            .0;
+            require_keys_eq!(
+                position_info.key(),
+                expected_position,
+                ErrorCode::InvalidPosition
+            );
+            require_keys_eq!(
+                *position_info.owner,
+                *ctx.program_id,
+                ErrorCode::InvalidPosition
+            );
+            let position = read_position(position_info)?;
+            require_keys_eq!(position.bond, bond_key, ErrorCode::InvalidPosition);
+            require_keys_eq!(
+                position.holder,
+                registered.holder,
+                ErrorCode::InvalidPosition
+            );
+            require!(position.units > 0, ErrorCode::InvalidPosition);
+
+            let (expected_entry, entry_bump) = Pubkey::find_program_address(
+                &[
+                    SNAPSHOT_ENTRY,
+                    snapshot_key.as_ref(),
+                    registered.holder.as_ref(),
+                ],
+                ctx.program_id,
+            );
+            require_keys_eq!(
+                snapshot_entry_info.key(),
+                expected_entry,
+                ErrorCode::InvalidSnapshotEntry
+            );
+            require!(
+                snapshot_entry_info.is_writable,
+                ErrorCode::InvalidSnapshotEntry
+            );
+            if *snapshot_entry_info.owner == *ctx.program_id {
+                return err!(ErrorCode::DuplicateSnapshotEntry);
+            }
+            require_keys_eq!(
+                *snapshot_entry_info.owner,
+                System::id(),
+                ErrorCode::InvalidSnapshotEntry
+            );
+            require!(
+                snapshot_entry_info.data_is_empty(),
+                ErrorCode::InvalidSnapshotEntry
+            );
+
+            batch_units = batch_units
+                .checked_add(position.units)
+                .ok_or(ErrorCode::Overflow)?;
+            let entry = SnapshotEntry {
+                snapshot: snapshot_key,
+                bond: bond_key,
+                holder: registered.holder,
+                position: position_info.key(),
+                registry_index: index,
+                units: position.units,
+                record_date_ts,
+                recorded_at_ts: clock.unix_timestamp,
+                recorded_slot: clock.slot,
+                bump: entry_bump,
+            };
+            create_snapshot_entry(
+                &ctx.accounts.cranker.to_account_info(),
+                snapshot_entry_info,
+                &ctx.accounts.system_program.to_account_info(),
+                &entry,
+            )?;
+            emit!(SnapshotEntryRecorded {
+                snapshot: snapshot_key,
+                holder: registered.holder,
+                registry_index: index,
+                units: position.units,
+            });
+        }
+        let snapshot = &mut ctx.accounts.snapshot;
+        let processed = snapshot
+            .processed_holder_count
+            .checked_add(batch_size)
+            .ok_or(ErrorCode::Overflow)?;
+        let total = snapshot
+            .total_units
+            .checked_add(batch_units)
+            .ok_or(ErrorCode::Overflow)?;
+        require!(
+            processed <= snapshot.expected_holder_count,
+            ErrorCode::SnapshotCountMismatch
+        );
+        require!(
+            total <= snapshot.expected_total_units,
+            ErrorCode::SnapshotTotalMismatch
+        );
+        snapshot.next_index = end_index;
+        snapshot.processed_holder_count = processed;
+        snapshot.total_units = total;
+        snapshot.status = SnapshotStatus::Processing;
+        emit!(SnapshotBatchProcessed {
+            snapshot: snapshot_key,
+            start_index,
+            processed_holder_count: processed,
+            total_units: total,
+        });
+        Ok(())
+    }
+
+    pub fn finalize_snapshot(ctx: Context<FinalizeSnapshot>) -> Result<()> {
+        let clock = Clock::get()?;
+        let snapshot = &ctx.accounts.snapshot;
+        require!(
+            snapshot.status != SnapshotStatus::Finalized,
+            ErrorCode::SnapshotFinalized
+        );
+        require!(
+            clock.unix_timestamp >= snapshot.record_date_ts,
+            ErrorCode::SnapshotNotDue
+        );
+        require!(
+            snapshot.expected_holder_count > 0 && snapshot.expected_total_units > 0,
+            ErrorCode::EmptySnapshot
+        );
+        require!(
+            snapshot.processed_holder_count == snapshot.expected_holder_count
+                && snapshot.next_index == snapshot.expected_holder_count,
+            ErrorCode::SnapshotIncomplete
+        );
+        require!(
+            snapshot.total_units == snapshot.expected_total_units,
+            ErrorCode::SnapshotTotalMismatch
+        );
+        require!(
+            ctx.accounts.registry.count == snapshot.expected_holder_count,
+            ErrorCode::SnapshotCountMismatch
+        );
+        require!(
+            ctx.accounts.registry.total_units == snapshot.expected_total_units
+                && ctx.accounts.bond.outstanding == snapshot.expected_total_units,
+            ErrorCode::SnapshotTotalMismatch
+        );
+        require!(
+            ctx.accounts.bond.status == Status::IssuanceClosed,
+            ErrorCode::IssuanceNotClosed
+        );
+        check_closed_supply(
+            &ctx.accounts.bond,
+            &ctx.accounts.registry,
+            &ctx.accounts.mint,
+            &ctx.accounts.vault,
+        )?;
+        let snapshot = &mut ctx.accounts.snapshot;
+        snapshot.status = SnapshotStatus::Finalized;
+        snapshot.finalized_at_ts = clock.unix_timestamp;
+        snapshot.finalized_slot = clock.slot;
+        emit!(SnapshotFinalized {
+            snapshot: snapshot.key(),
+            bond: snapshot.bond,
+            holder_count: snapshot.processed_holder_count,
+            total_units: snapshot.total_units,
+            finalized_at_ts: snapshot.finalized_at_ts,
+            finalized_slot: snapshot.finalized_slot,
+        });
+        Ok(())
+    }
 }
 
 #[derive(Accounts)]
@@ -449,6 +772,80 @@ pub struct CloseIssuance<'info> {
     pub token_program: UncheckedAccount<'info>,
 }
 
+#[derive(Accounts)]
+#[instruction(snapshot_id: [u8; 32])]
+pub struct CreateSnapshot<'info> {
+    #[account(seeds=[ISSUER, config.id.as_ref()], bump=config.bump, has_one=authority)]
+    pub config: Account<'info, IssuerConfig>,
+    #[account(mut)]
+    pub authority: Signer<'info>,
+    #[account(seeds=[BOND, config.key().as_ref(), bond.id.as_ref()], bump=bond.bump, has_one=config, has_one=mint, has_one=vault, has_one=bond_authority)]
+    pub bond: Account<'info, Bond>,
+    #[account(seeds=[REGISTRY, bond.key().as_ref()], bump=bond.registry_bump, has_one=bond)]
+    pub registry: Account<'info, RegistryState>,
+    #[account(init, payer=authority, space=RecordDateSnapshot::SPACE, seeds=[SNAPSHOT, bond.key().as_ref(), snapshot_id.as_ref()], bump)]
+    pub snapshot: Account<'info, RecordDateSnapshot>,
+    #[account(seeds=[AUTH, bond.key().as_ref()], bump=bond.authority_bump, constraint=bond_authority.bond == bond.key() @ ErrorCode::WrongAuthority)]
+    pub bond_authority: Account<'info, BondAuthority>,
+    #[account(address=bond.mint)]
+    /// CHECK: Closed-mint custody is manually validated against SPL owner, decimals, supply and revoked authority.
+    pub mint: UncheckedAccount<'info>,
+    #[account(address=bond.vault)]
+    /// CHECK: Closed-vault custody is manually validated against SPL owner, mint, balance and PDA authority.
+    pub vault: UncheckedAccount<'info>,
+    #[account(address = spl_token::ID)]
+    /// CHECK: The account address is constrained to the canonical classic SPL Token Program ID.
+    pub token_program: UncheckedAccount<'info>,
+    pub system_program: Program<'info, System>,
+    pub rent: Sysvar<'info, Rent>,
+}
+
+#[derive(Accounts)]
+pub struct ProcessSnapshotBatch<'info> {
+    #[account(mut, seeds=[SNAPSHOT, bond.key().as_ref(), snapshot.snapshot_id.as_ref()], bump=snapshot.bump, has_one=bond)]
+    pub snapshot: Account<'info, RecordDateSnapshot>,
+    #[account(seeds=[BOND, bond.config.as_ref(), bond.id.as_ref()], bump=bond.bump, has_one=mint, has_one=vault, has_one=bond_authority)]
+    pub bond: Account<'info, Bond>,
+    #[account(seeds=[REGISTRY, bond.key().as_ref()], bump=bond.registry_bump, has_one=bond)]
+    pub registry: Account<'info, RegistryState>,
+    #[account(seeds=[AUTH, bond.key().as_ref()], bump=bond.authority_bump, constraint=bond_authority.bond == bond.key() @ ErrorCode::WrongAuthority)]
+    pub bond_authority: Account<'info, BondAuthority>,
+    #[account(address=bond.mint)]
+    /// CHECK: Closed-mint custody is manually validated against SPL owner, decimals, supply and revoked authority.
+    pub mint: UncheckedAccount<'info>,
+    #[account(address=bond.vault)]
+    /// CHECK: Closed-vault custody is manually validated against SPL owner, mint, balance and PDA authority.
+    pub vault: UncheckedAccount<'info>,
+    #[account(address = spl_token::ID)]
+    /// CHECK: The account address is constrained to the canonical classic SPL Token Program ID.
+    pub token_program: UncheckedAccount<'info>,
+    #[account(mut)]
+    pub cranker: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct FinalizeSnapshot<'info> {
+    #[account(mut, seeds=[SNAPSHOT, bond.key().as_ref(), snapshot.snapshot_id.as_ref()], bump=snapshot.bump, has_one=bond)]
+    pub snapshot: Account<'info, RecordDateSnapshot>,
+    #[account(seeds=[BOND, bond.config.as_ref(), bond.id.as_ref()], bump=bond.bump, has_one=mint, has_one=vault, has_one=bond_authority)]
+    pub bond: Account<'info, Bond>,
+    #[account(seeds=[REGISTRY, bond.key().as_ref()], bump=bond.registry_bump, has_one=bond)]
+    pub registry: Account<'info, RegistryState>,
+    #[account(seeds=[AUTH, bond.key().as_ref()], bump=bond.authority_bump, constraint=bond_authority.bond == bond.key() @ ErrorCode::WrongAuthority)]
+    pub bond_authority: Account<'info, BondAuthority>,
+    #[account(address=bond.mint)]
+    /// CHECK: Closed-mint custody is manually validated against SPL owner, decimals, supply and revoked authority.
+    pub mint: UncheckedAccount<'info>,
+    #[account(address=bond.vault)]
+    /// CHECK: Closed-vault custody is manually validated against SPL owner, mint, balance and PDA authority.
+    pub vault: UncheckedAccount<'info>,
+    #[account(address = spl_token::ID)]
+    /// CHECK: The account address is constrained to the canonical classic SPL Token Program ID.
+    pub token_program: UncheckedAccount<'info>,
+    pub finalizer: Signer<'info>,
+}
+
 #[account]
 pub struct IssuerConfig {
     pub id: [u8; 32],
@@ -521,6 +918,52 @@ impl Position {
     pub const SPACE: usize = 81;
 }
 
+#[account]
+pub struct RecordDateSnapshot {
+    pub bond: Pubkey,
+    pub snapshot_id: [u8; 32],
+    pub issuer: Pubkey,
+    pub record_date_ts: i64,
+    pub created_at_ts: i64,
+    pub created_slot: u64,
+    pub finalized_at_ts: i64,
+    pub finalized_slot: u64,
+    pub expected_holder_count: u8,
+    pub processed_holder_count: u8,
+    pub next_index: u8,
+    pub expected_total_units: u64,
+    pub total_units: u64,
+    pub status: SnapshotStatus,
+    pub bump: u8,
+}
+impl RecordDateSnapshot {
+    pub const SPACE: usize = 176;
+}
+
+#[account]
+pub struct SnapshotEntry {
+    pub snapshot: Pubkey,
+    pub bond: Pubkey,
+    pub holder: Pubkey,
+    pub position: Pubkey,
+    pub registry_index: u8,
+    pub units: u64,
+    pub record_date_ts: i64,
+    pub recorded_at_ts: i64,
+    pub recorded_slot: u64,
+    pub bump: u8,
+}
+impl SnapshotEntry {
+    pub const SPACE: usize = 176;
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SnapshotStatus {
+    Scheduled,
+    Processing,
+    Finalized,
+}
+
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CouponFrequency {
     Semiannual,
@@ -564,6 +1007,38 @@ pub struct IssuanceClosed {
     pub bond: Pubkey,
     pub units: u64,
     pub holders: u8,
+}
+
+#[event]
+pub struct SnapshotCreated {
+    pub snapshot: Pubkey,
+    pub bond: Pubkey,
+    pub record_date_ts: i64,
+    pub expected_holder_count: u8,
+    pub expected_total_units: u64,
+}
+#[event]
+pub struct SnapshotEntryRecorded {
+    pub snapshot: Pubkey,
+    pub holder: Pubkey,
+    pub registry_index: u8,
+    pub units: u64,
+}
+#[event]
+pub struct SnapshotBatchProcessed {
+    pub snapshot: Pubkey,
+    pub start_index: u8,
+    pub processed_holder_count: u8,
+    pub total_units: u64,
+}
+#[event]
+pub struct SnapshotFinalized {
+    pub snapshot: Pubkey,
+    pub bond: Pubkey,
+    pub holder_count: u8,
+    pub total_units: u64,
+    pub finalized_at_ts: i64,
+    pub finalized_slot: u64,
 }
 
 #[error_code]
@@ -618,8 +1093,134 @@ pub enum ErrorCode {
     PositionTotalMismatch,
     #[msg("Cannot close an empty issuance.")]
     EmptyIssuance,
+    #[msg("Snapshot identifier cannot be zero.")]
+    InvalidSnapshotId,
+    #[msg("A snapshot requires a closed, immutable issuance.")]
+    IssuanceNotClosed,
+    #[msg("Record date cannot be in the past when snapshot is created.")]
+    RetroactiveSnapshot,
+    #[msg("Snapshot requires at least one registered holder and one bond unit.")]
+    EmptySnapshot,
+    #[msg("Snapshot record date has not arrived.")]
+    SnapshotNotDue,
+    #[msg("Snapshot has already been finalized.")]
+    SnapshotFinalized,
+    #[msg("Snapshot batch size is zero, too large, or has an incorrect account list.")]
+    InvalidSnapshotBatch,
+    #[msg("Snapshot batch start index is not the next required registry index.")]
+    SnapshotIndexMismatch,
+    #[msg("Registry entry account is invalid for this bond and index.")]
+    InvalidRegistryEntry,
+    #[msg("Position account is invalid for the registry holder.")]
+    InvalidPosition,
+    #[msg("Snapshot entry PDA or account is invalid.")]
+    InvalidSnapshotEntry,
+    #[msg("A snapshot entry already exists for this holder.")]
+    DuplicateSnapshotEntry,
+    #[msg("Snapshot holder count does not match the registry.")]
+    SnapshotCountMismatch,
+    #[msg("Snapshot total does not match the frozen registry supply.")]
+    SnapshotTotalMismatch,
+    #[msg("Snapshot cannot be finalized before every holder has been processed.")]
+    SnapshotIncomplete,
     #[msg("Lifecycle transition is invalid or repeated.")]
     InvalidTransition,
+}
+
+fn read_registry_entry(info: &AccountInfo<'_>) -> Result<RegistryEntry> {
+    let data = info.try_borrow_data()?;
+    let mut slice: &[u8] = &data;
+    RegistryEntry::try_deserialize(&mut slice).map_err(|_| error!(ErrorCode::InvalidRegistryEntry))
+}
+
+fn read_position(info: &AccountInfo<'_>) -> Result<Position> {
+    let data = info.try_borrow_data()?;
+    let mut slice: &[u8] = &data;
+    Position::try_deserialize(&mut slice).map_err(|_| error!(ErrorCode::InvalidPosition))
+}
+
+fn create_snapshot_entry<'info>(
+    payer: &AccountInfo<'info>,
+    target: &AccountInfo<'info>,
+    system: &AccountInfo<'info>,
+    entry: &SnapshotEntry,
+) -> Result<()> {
+    let bump_seed = [entry.bump];
+    let seeds: &[&[u8]] = &[
+        SNAPSHOT_ENTRY,
+        entry.snapshot.as_ref(),
+        entry.holder.as_ref(),
+        &bump_seed,
+    ];
+    let minimum = Rent::get()?.minimum_balance(SnapshotEntry::SPACE);
+    if target.lamports() == 0 {
+        let ix = system_instruction::create_account(
+            &payer.key(),
+            &target.key(),
+            minimum,
+            SnapshotEntry::SPACE as u64,
+            &crate::ID,
+        );
+        invoke_signed(
+            &ix,
+            &[payer.clone(), target.clone(), system.clone()],
+            &[seeds],
+        )?;
+    } else {
+        let shortfall = minimum.saturating_sub(target.lamports());
+        if shortfall > 0 {
+            invoke(
+                &system_instruction::transfer(&payer.key(), &target.key(), shortfall),
+                &[payer.clone(), target.clone(), system.clone()],
+            )?;
+        }
+        invoke_signed(
+            &system_instruction::allocate(&target.key(), SnapshotEntry::SPACE as u64),
+            &[target.clone(), system.clone()],
+            &[seeds],
+        )?;
+        invoke_signed(
+            &system_instruction::assign(&target.key(), &crate::ID),
+            &[target.clone(), system.clone()],
+            &[seeds],
+        )?;
+    }
+    let mut data = target.try_borrow_mut_data()?;
+    let mut destination: &mut [u8] = &mut data;
+    entry.try_serialize(&mut destination)?;
+    Ok(())
+}
+
+fn check_closed_supply(
+    bond: &Bond,
+    registry: &RegistryState,
+    mint: &UncheckedAccount,
+    vault: &UncheckedAccount,
+) -> Result<()> {
+    require_keys_eq!(*mint.owner, spl_token::ID, ErrorCode::InvalidMint);
+    require_keys_eq!(*vault.owner, spl_token::ID, ErrorCode::InvalidVault);
+    let mint_data =
+        SplMint::unpack(&mint.try_borrow_data()?).map_err(|_| error!(ErrorCode::InvalidMint))?;
+    let vault_data = SplAccount::unpack(&vault.try_borrow_data()?)
+        .map_err(|_| error!(ErrorCode::InvalidVault))?;
+    require!(mint_data.decimals == 0, ErrorCode::InvalidMint);
+    require!(
+        mint_data.mint_authority == COption::None,
+        ErrorCode::InvalidMint
+    );
+    require_keys_eq!(vault_data.mint, mint.key(), ErrorCode::InvalidVault);
+    require_keys_eq!(
+        vault_data.owner,
+        bond.bond_authority,
+        ErrorCode::InvalidVault
+    );
+    require!(mint_data.supply == bond.issued, ErrorCode::SupplyMismatch);
+    require!(vault_data.amount == bond.issued, ErrorCode::VaultMismatch);
+    require!(
+        registry.total_units == bond.outstanding && bond.outstanding == bond.issued,
+        ErrorCode::PositionTotalMismatch
+    );
+    Ok(())
 }
 
 fn mint_to_vault<'info>(
@@ -695,6 +1296,8 @@ mod tests {
         assert_eq!(BondAuthority::SPACE, 41);
         assert_eq!(RegistryState::SPACE, 50);
         assert_eq!(Position::SPACE, 81);
+        assert_eq!(RecordDateSnapshot::SPACE, 176);
+        assert_eq!(SnapshotEntry::SPACE, 176);
         assert!(Bond::SPACE >= 220);
     }
     #[test]

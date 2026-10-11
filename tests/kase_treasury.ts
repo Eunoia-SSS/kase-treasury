@@ -1,7 +1,7 @@
 import * as anchor from "@coral-xyz/anchor";
 import { AnchorProvider, BN, Program, web3 } from "@coral-xyz/anchor";
 import { getAccount, getMint, TOKEN_PROGRAM_ID } from "@solana/spl-token";
-import { randomBytes } from "crypto";
+import { createHash, randomBytes } from "crypto";
 import assert from "node:assert/strict";
 import { KaseTreasury } from "../target/types/kase_treasury";
 
@@ -93,9 +93,201 @@ describe("KASE Treasury M2 localnet", function () {
     const f=await make(10); const h=await register(f,web3.Keypair.generate(),3);
     await program.methods.issueUnits(new BN(2)).accountsStrict(issueAccounts(f,h)).rpc();
     await program.methods.closeIssuance().accountsStrict({config:f.config,authority:provider.wallet.publicKey,bond:f.bond,registry:f.registry,bondAuthority:f.auth,mint:f.mint,vault:f.vault,tokenProgram:TOKEN_PROGRAM_ID}).rpc();
-    const mint=await getMint(provider.connection,f.mint,"confirmed",TOKEN_PROGRAM_ID);
+    let mint=await getMint(provider.connection,f.mint,"confirmed",TOKEN_PROGRAM_ID);
+    for (let retry=0; mint.mintAuthority !== null && retry < 10; retry += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      mint=await getMint(provider.connection,f.mint,"confirmed",TOKEN_PROGRAM_ID);
+    }
     assert.equal(mint.supply,5n); assert.equal(mint.mintAuthority,null);
     await fails(program.methods.issueUnits(new BN(1)).accountsStrict(issueAccounts(f,h)).rpc(),"issuance after close");
     const bond=await program.account.bond.fetch(f.bond); assert.equal(bond.status.issuanceClosed !== undefined,true);
+  });
+});
+
+function snapshotAddress(f: F, snapshotId: number[]): web3.PublicKey {
+  return addr([Buffer.from("snapshot"), f.bond.toBuffer(), Buffer.from(snapshotId)]);
+}
+function snapshotEntryAddress(snapshot: web3.PublicKey, holder: web3.PublicKey): web3.PublicKey {
+  return addr([Buffer.from("snapshot_entry"), snapshot.toBuffer(), holder.toBuffer()]);
+}
+async function clockUnix(): Promise<number> {
+  const info = await provider.connection.getAccountInfo(web3.SYSVAR_CLOCK_PUBKEY, "confirmed");
+  assert.ok(info, "Clock sysvar must exist");
+  return Number(Buffer.from(info.data).readBigInt64LE(32));
+}
+async function closeIssuance(f: F): Promise<void> {
+  await program.methods.closeIssuance().accountsStrict({
+    config: f.config,
+    authority: provider.wallet.publicKey,
+    bond: f.bond,
+    registry: f.registry,
+    bondAuthority: f.auth,
+    mint: f.mint,
+    vault: f.vault,
+    tokenProgram: TOKEN_PROGRAM_ID,
+  }).rpc();
+}
+async function createSnapshot(f: F, snapshotId: number[], recordDate: number, authority = provider.wallet.publicKey, signer?: web3.Keypair): Promise<web3.PublicKey> {
+  const snapshot = snapshotAddress(f, snapshotId);
+  const builder = program.methods.createSnapshot(snapshotId, new BN(recordDate)).accountsStrict({
+    config: f.config,
+    authority,
+    bond: f.bond,
+    registry: f.registry,
+    snapshot,
+    bondAuthority: f.auth,
+    mint: f.mint,
+    vault: f.vault,
+    tokenProgram: TOKEN_PROGRAM_ID,
+    systemProgram: SystemProgram.programId,
+    rent: SYSVAR_RENT_PUBKEY,
+  });
+  if (signer) builder.signers([signer]);
+  await builder.rpc();
+  return snapshot;
+}
+async function snapshotBatch(f: F, snapshot: web3.PublicKey, start: number, size: number, overrides: Record<string, web3.PublicKey> = {}): Promise<string> {
+  const entries = [];
+  for (let offset = 0; offset < size; offset += 1) {
+    const index = start + offset;
+    const registryEntry = addr([Buffer.from("registry_entry"), f.bond.toBuffer(), Buffer.from([index])]);
+    const state = await program.account.registryEntry.fetch(registryEntry);
+    const holder = state.holder as web3.PublicKey;
+    entries.push({
+      pubkey: registryEntry,
+      isSigner: false,
+      isWritable: false,
+    }, {
+      pubkey: overrides["position"] ?? position(f, holder),
+      isSigner: false,
+      isWritable: false,
+    }, {
+      pubkey: overrides["snapshotEntry"] ?? snapshotEntryAddress(snapshot, holder),
+      isSigner: false,
+      isWritable: true,
+    });
+  }
+  return program.methods.processSnapshotBatch(start, size).accountsStrict({
+    snapshot,
+    bond: f.bond,
+    registry: f.registry,
+    bondAuthority: f.auth,
+    mint: f.mint,
+    vault: f.vault,
+    tokenProgram: TOKEN_PROGRAM_ID,
+    cranker: provider.wallet.publicKey,
+    systemProgram: SystemProgram.programId,
+  }).remainingAccounts(entries).rpc();
+}
+async function fetchSnapshotEntry(address: web3.PublicKey): Promise<{ registryIndex: number; holder: web3.PublicKey; units: bigint; recordDateTs: bigint }> {
+  const info = await provider.connection.getAccountInfo(address, "confirmed");
+  assert.ok(info, "snapshot entry account must exist");
+  const data = Buffer.from(info.data);
+  const discriminator = createHash("sha256").update("account:SnapshotEntry").digest().subarray(0, 8);
+  assert.deepEqual(data.subarray(0, 8), discriminator);
+  return {
+    holder: new web3.PublicKey(data.subarray(8 + 32 + 32, 8 + 32 + 32 + 32)),
+    registryIndex: data.readUInt8(8 + 32 * 4),
+    units: data.readBigUInt64LE(8 + 32 * 4 + 1),
+    recordDateTs: data.readBigInt64LE(8 + 32 * 4 + 1 + 8),
+  };
+}
+async function finalizeSnapshot(f: F, snapshot: web3.PublicKey): Promise<string> {
+  return program.methods.finalizeSnapshot().accountsStrict({
+    snapshot,
+    bond: f.bond,
+    registry: f.registry,
+    bondAuthority: f.auth,
+    mint: f.mint,
+    vault: f.vault,
+    tokenProgram: TOKEN_PROGRAM_ID,
+    finalizer: provider.wallet.publicKey,
+  }).rpc();
+}
+
+describe("KASE Treasury M3 record-date snapshots", function () {
+  this.timeout(1_000_000);
+
+  it("snapshots multiple holders in order, reconciles totals, and finalizes immutably", async () => {
+    const f = await make(100);
+    const holders = [
+      await register(f, web3.Keypair.generate(), 10),
+      await register(f, web3.Keypair.generate(), 5),
+      await register(f, web3.Keypair.generate(), 2),
+    ];
+    await closeIssuance(f);
+
+    const now = await clockUnix();
+    const id = bytes();
+    const recordDate = now + 5;
+    const snapshotPda = snapshotAddress(f, id);
+    await fails(createSnapshot(f, bytes(), now - 1), "retroactive snapshot");
+    await createSnapshot(f, id, recordDate);
+    await fails(createSnapshot(f, id, recordDate), "duplicate snapshot identity");
+    await fails(finalizeSnapshot(f, snapshotPda), "premature finalization");
+    await fails(snapshotBatch(f, snapshotPda, 0, 1), "processing before record date");
+    await fails(program.methods.processSnapshotBatch(0, 6).accountsStrict({
+      snapshot: snapshotPda, bond: f.bond, registry: f.registry, bondAuthority: f.auth,
+      mint: f.mint, vault: f.vault, tokenProgram: TOKEN_PROGRAM_ID,
+      cranker: provider.wallet.publicKey, systemProgram: SystemProgram.programId,
+    }).remainingAccounts([]).rpc(), "batch above configured maximum");
+
+    const outsider = web3.Keypair.generate();
+    await fails(createSnapshot(f, bytes(), recordDate, outsider.publicKey, outsider), "unauthorized snapshot creation");
+
+    const deadline = Date.now() + 30_000;
+    while (await clockUnix() < recordDate && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    assert.ok((await clockUnix()) >= recordDate, "local validator clock reached record date");
+
+    await snapshotBatch(f, snapshotPda, 0, 2);
+    const halfway = await program.account.recordDateSnapshot.fetch(snapshotPda);
+    assert.equal(halfway.processedHolderCount, 2);
+    assert.equal(halfway.totalUnits.toNumber(), 15);
+    await fails(snapshotBatch(f, snapshotPda, 0, 1), "duplicate/out-of-order batch");
+
+    await snapshotBatch(f, snapshotPda, 2, 1);
+    for (let i = 0; i < holders.length; i += 1) {
+      const entry = await fetchSnapshotEntry(snapshotEntryAddress(snapshotPda, holders[i].publicKey));
+      assert.equal(entry.registryIndex, i);
+      assert.equal(entry.holder.toBase58(), holders[i].publicKey.toBase58());
+      assert.equal(Number(entry.units), [10, 5, 2][i]);
+      assert.equal(Number(entry.recordDateTs), recordDate);
+    }
+    await finalizeSnapshot(f, snapshotPda);
+    const finalized = await program.account.recordDateSnapshot.fetch(snapshotPda);
+    assert.ok(finalized.status.finalized !== undefined);
+    assert.equal(finalized.processedHolderCount, 3);
+    assert.equal(finalized.totalUnits.toNumber(), 17);
+    assert.ok(finalized.finalizedAtTs.toNumber() >= recordDate);
+    await fails(snapshotBatch(f, snapshotPda, 3, 1), "mutation after finalization");
+    await fails(finalizeSnapshot(f, snapshotPda), "repeat finalization");
+  });
+
+  it("rejects snapshots before issuance closure and invalid position accounts", async () => {
+    const empty = await make(20);
+    await fails(closeIssuance(empty), "closing empty issuance");
+    await fails(createSnapshot(empty, bytes(), await clockUnix()), "empty bond snapshot");
+
+    const f = await make(20);
+    await register(f, web3.Keypair.generate(), 4);
+    const now = await clockUnix();
+    await fails(createSnapshot(f, bytes(), now), "snapshot before issuance closure");
+    await closeIssuance(f);
+
+    const id = bytes();
+    const date = (await clockUnix()) + 2;
+    const snapshotPda = await createSnapshot(f, id, date);
+    const deadline = Date.now() + 30_000;
+    while (await clockUnix() < date && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    const bogus = web3.Keypair.generate().publicKey;
+    await fails(snapshotBatch(f, snapshotPda, 0, 1, { position: bogus }), "substituted position");
+    const afterFailure = await program.account.recordDateSnapshot.fetch(snapshotPda);
+    assert.equal(afterFailure.processedHolderCount, 0);
+    await snapshotBatch(f, snapshotPda, 0, 1);
+    await finalizeSnapshot(f, snapshotPda);
   });
 });

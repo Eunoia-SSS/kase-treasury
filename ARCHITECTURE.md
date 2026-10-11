@@ -1,14 +1,14 @@
 # KASE Treasury — Architecture
 
-**Status:** M2 issuer, bond, custody, and registry code is implemented and localnet-tested. Later functionality remains proposed.
+**Status:** M2 registry/issuance and M3 snapshots are implemented and local-validator tested. Settlement, coupon, redemption, governance and frontend chain integration remain future work.
 
 ## Current implementation
 
 Frontend: static Next.js mock dashboard with overview, bonds, actions, governance, transactions; reusable UI; typed domain models; fabricated fixtures.
 
-Anchor workspace (M2 implemented; localnet only): Anchor.toml pins Anchor 0.31.1/Solana 2.1.0; Cargo workspace/lockfile are present; programs/kase_treasury/src/lib.rs contains issuer, bond, registry, SPL mint/vault, issuance, closure, errors, and events. tests/kase_treasury.ts contains local-validator tests.
+Anchor workspace (M2–M3 implemented; localnet only): Anchor.toml pins Anchor 0.31.1/Solana 2.1.0; Cargo workspace/lockfile are present; programs/kase_treasury/src/lib.rs contains issuer, bond, registry, SPL mint/vault, issuance, closure, snapshots, errors and events. tests/kase_treasury.ts contains validator tests.
 
-The frontend has no wallet adapter, RPC client, indexer, database, settlement, or authoritative chain history. Displayed values/signatures remain mock data. The Anchor program covers M2 only; snapshots, coupons, redemption, governance, and settlement are absent. Local tests do not imply deployment or audit.
+The frontend has no wallet adapter, RPC client, indexer, database, settlement, or authoritative chain history. Displayed values/signatures remain mock data. The Anchor program covers M2 registry/issuance and M3 snapshots; coupon, redemption, governance and settlement are absent. Local tests do not imply deployment or audit.
 
 ## Target runtime boundaries
 
@@ -36,7 +36,7 @@ M2 keeps the compact program in programs/kase_treasury/src/lib.rs, including acc
 
 ## Record-date boundary
 
-The program cannot retrieve arbitrary historical SPL balances from RPC. M2 establishes a bounded program-controlled ownership source, but does not implement record dates, cutoff checks, snapshots, or locks. M3 must read Solana Clock, reject changes at now >= record_date_ts, and build immutable entries from RegistryEntry and validated Position accounts. No holder transfers exist in MVP.
+The program cannot query arbitrary historical SPL balances. M3 requires irreversible issuance closure before snapshots: mint authority is revoked and no transfer or position mutation instruction exists. The issuer creates a snapshot with record_date_ts at or after Clock.unix_timestamp; past cutoffs fail. The frozen registry makes future dates reliable. Permissionless bounded batches begin at/after that date and copy sequential validated RegistryEntry and Position pairs into unique per-holder SnapshotEntry PDAs. Finalization reconciles count, cursor and units against registry, bond, closed mint supply and vault custody. Finalized accounts have no mutation path. Later coupon and weighted voting instructions must use finalized entries; those actions are not implemented.
 
 ## Financial and authority boundary
 
@@ -44,4 +44,4 @@ Bond mint decimals are 0 (whole bonds) and the classic SPL mint remains in PDA c
 
 ## Current project status
 
-The UI remains mock-only. M2 compiles and passes three Rust tests plus six Anchor local-validator groups. It is not deployed to Devnet; wallet integration and M3 actions remain unimplemented. There is no GitHub remote or Vercel deployment. Tests are not an audit.
+The UI remains mock-only. M2–M3 pass Rust unit and Anchor local-validator tests. No Devnet deployment, wallet integration, settlement, coupon, redemption or governance exists. M2 is pushed to GitHub; M3 remains local and unpushed. Vercel is not configured. Tests are not an audit.

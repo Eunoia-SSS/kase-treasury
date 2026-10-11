@@ -1,6 +1,6 @@
 # KASE Treasury — Protocol Specification
 
-**Status:** M1 design plus M2 implementation record. Issuer, bond, registry, issuance, and closure are implemented and localnet-tested. Snapshots, settlement, redemption, governance, and Devnet behavior are not implemented.
+**Status:** M1 financial model, M2 issuance/registry and M3 snapshots are implemented and local-validator tested. Coupon settlement, redemption, governance and Devnet remain future work.
 
 ## Financial model
 
@@ -32,7 +32,7 @@ Displayed amounts multiply by 1,000,000 for token base units; all example amount
 
 Only the configured DSET mint is supported for payment. Each action must be fully funded before entering `Funded`; no partial completion or mint-on-demand. A transfer and claim-state change occur atomically. Underfunding blocks the action.
 
-## M2 accounts and later planned accounts
+## M2–M3 accounts and later planned accounts
 
 | Account | Status and identity |
 | --- | --- |
@@ -44,8 +44,9 @@ Only the configured DSET mint is supported for payment. Each action must be full
 | RegistryState | Program PDA: registry + bond; holder count and total units. |
 | RegistryEntry | Program PDA: registry_entry + bond + sequential u8 index; maximum 100 unique entries. |
 | Position | Program PDA: position + bond + holder; holder and beneficial units. |
-| RecordDateSnapshot, SnapshotEntry | Planned M3 immutable cutoff eligibility and holder snapshot units. |
-| CouponPeriod, ClaimRecord, PaymentVault | Planned M3 terms, funded settlement, unique claims. |
+| RecordDateSnapshot | Implemented M3 PDA: snapshot + bond + snapshot_id; cutoff, expected/processed count and units, cursor, status and time/slot metadata. |
+| SnapshotEntry | Implemented M3 PDA: snapshot_entry + snapshot + holder; one recorded Position, index and units per holder. |
+| CouponPeriod, ClaimRecord, PaymentVault | Planned M4 terms, funded settlement and unique claims. |
 | RedemptionRecord | Planned unique maturity entitlement and atomic vault burn/position reduction. |
 | Proposal, VoteRecord | Planned snapshot-weighted governance and unique vote. |
 
@@ -55,29 +56,27 @@ M2 is implemented in one Rust source file. Generated IDL/types and deploy artifa
 
 ## Record-date design
 
-An Anchor instruction cannot retrieve arbitrary historical SPL token balances. RPC/indexer queries are not proof to the program. The protocol must snapshot its own controlled registry and must not claim to have reconstructed arbitrary wallet history.
+Anchor cannot retrieve arbitrary historical SPL token balances; RPC/indexer results are not on-chain proof. Eligibility comes from the M2 program-controlled beneficial ownership registry.
 
-| Option | Benefit | MVP limitation |
-| --- | --- | --- |
-| A. Token-2022 NonTransferable wallet tokens | Holders visibly own wallet tokens; the extension blocks ordinary transfers. | Requires extension setup/validation and holder token-account lifecycle; future transfer support needs a new design and adds integration work to the pinned Anchor 0.31.1 scaffold. |
-| B. Program-controlled classic SPL custody + Position PDAs | Direct classic SPL Token 7.0 CPI; all units remain in PDA vault custody. Position and sequential RegistryEntry PDAs form the eligibility registry. | Custodial beneficial positions, not wallet tokens; authority risk must be disclosed. No secondary transfer in MVP. |
-| Explicit registered-holder snapshot (as a standalone source) | Bounded immutable list can be audited. | An operator-entered list is unsafe unless copied and reconciled against program-owned positions; it is a snapshot mechanism, not an ownership model. |
+The implemented rule is a deterministic freeze:
 
-**Selected and implemented for M2: B.** BondAuthority controls the classic SPL mint and vault. Authorized instructions mint only to the vault. Position binds bond, holder, and units; RegistryEntry has a unique sequential index. Registration requires issuer authorization and holder signature. M2 validates PDA seeds, stored keys, token program, mint decimals/authority, and vault mint/authority. Localnet-only; not externally audited.
+1. Issuance must be closed. Closing irreversibly revokes mint authority, and no transfer or post-close position mutation instruction exists.
+2. The issuer creates a unique snapshot with a UTC Unix-second record date. The instruction requires record_date_ts to be at least the current on-chain Clock time, rejecting retroactive snapshots.
+3. Permissionless processing starts only when Clock reaches the record date. Each batch handles 1–5 consecutive registry indices and validates the RegistryEntry PDA, Position PDA, stored bond/holder identities, positive units, and unique SnapshotEntry PDA.
+4. The header stores expected holder count and frozen units. Processing writes one entry per holder and advances a checked sequential cursor atomically. The caller pays entry rent.
+5. Finalization requires expected count/cursor, exact unit total, and reconciliation with registry, bond outstanding, closed mint supply, and vault amount.
 
-No transfers are allowed in the first MVP: there is no holder token balance to move and no `transfer_position` instruction. Only issuer-authorized issuance can increase positions while issuance is open; `close_issuance` irreversibly closes that path. A future transfer, if approved, must be program-mediated with source authorization, recipient acceptance, cutoff checks, and atomic position accounting. This model favors an enforceable registry over wallet transferability and is not a production custody recommendation.
+A future cutoff is reliable because the registry is frozen before that date. Late processing records the same units. No transfers are allowed in the MVP. The 100-holder and 5-entry batch limits bound work. The program does not reconstruct past account state.
 
-For cutoff `T`, every position/supply-changing instruction reads `Clock.unix_timestamp` and rejects if `now >= T`; issuance must also be closed before action snapshots are enabled. After cutoff, `begin_snapshot` is permissionless and records the processing slot. Bounded `snapshot_batch` calls copy registry entries and validate each Position PDA to unique immutable entries; the registry stays locked until completion. Finalization requires all holders processed once, unique entries, snapshot units equal outstanding positions, and outstanding units equal `BondVault.amount` and mint supply. Store `T`, processing/finalization slots, holder count, and total units. Mutations at/after `T` fail even if the cranker starts later; chain clock, not browser time, is authoritative. UI shows scheduled cutoff and observed slots. Permissionless batching/finalization avoids issuer-controlled liveness. Registry cap is 100; initial batch cap is 5, subject to transaction-size/compute tests.
-
-There are no holder-to-holder transfers in the MVP, before or after snapshot finalization. Issuance is the only increase path and ends permanently at `close_issuance`; later redemption is a one-way retirement path. From cutoff through finalization, all future position mutation paths must reject. Coupon/vote rights remain attached to the recorded snapshot holder even if a transfer instruction is added in a separately approved future milestone. A unique coupon-period PDA plus `ClaimRecord(coupon,holder)` prevents duplicate benefits. A unique maturity/holder redemption record prevents repeat principal; redemption later burns vault units and retires Position units atomically.
+Later coupon claims and weighted governance must reference a finalized snapshot and use immutable units in SnapshotEntry. Later ownership models cannot revise finalized entitlements.
 
 ## Lifecycle, instructions, and settlement
 
-Implemented M2 instructions: initialize_issuer, propose_issuer_authority, accept_issuer_authority, create_bond, register_holder, issue_units, close_issuance. Registration requires nonzero initial units plus issuer and holder signatures and mints only to BondVault. issue_units increases an existing position while issuance is open. close_issuance requires nonempty issuance and matching mint/vault/aggregate balances, then revokes mint authority. Planned later instructions include snapshots, coupons, redemption, and governance. No transfer or DSET settlement mint/sweep exists.
+Implemented M2 instructions: initialize_issuer, propose_issuer_authority, accept_issuer_authority, create_bond, register_holder, issue_units, close_issuance. Implemented M3 instructions: create_snapshot, process_snapshot_batch, finalize_snapshot. Registration requires issuer and holder signatures and mints to BondVault. close_issuance reconciles supply then revokes mint authority. Coupon, redemption, governance and settlement remain future work.
 
 ```text
 Bond: Draft -> Active -> Matured -> Closed
-Snapshot: Scheduled -> Building -> Finalized (immutable)
+Snapshot: Scheduled -> Processing -> Finalized (immutable)
 Coupon: Draft -> SnapshotBuilding -> SnapshotFinalized -> Funded -> Claiming -> Closed
 Redemption: Scheduled -> Matured -> SnapshotFinalized -> Funded -> Claiming -> Closed
 Proposal: Draft -> Voting -> Finalized(Passed | Rejected | NoQuorum)

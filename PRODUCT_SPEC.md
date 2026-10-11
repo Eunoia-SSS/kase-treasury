@@ -1,6 +1,6 @@
 # KASE Treasury — Product Specification
 
-**Status:** M1 specification for an educational prototype. Workflows below are proposed, not implemented. KASE Treasury is an independent project in the Superteam Kazakhstan × KASE Corporate Actions on Blockchain challenge context. It is not an official KASE product and does not claim partnership, endorsement, or approval.
+**Status:** M1 specification with M2 issuance/registry and M3 snapshots implemented locally. Coupon settlement, redemption, governance and frontend chain workflows remain proposed and unimplemented. KASE Treasury is an independent project in the Superteam Kazakhstan × KASE Corporate Actions on Blockchain challenge context. It is not an official KASE product and does not claim partnership, endorsement, or approval.
 
 ## Positioning
 

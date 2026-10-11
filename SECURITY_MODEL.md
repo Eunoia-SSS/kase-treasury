@@ -1,6 +1,6 @@
 # KASE Treasury — Security Model
 
-**Status:** Threat model and implementation boundary. M2 controls are implemented and localnet-tested; M3/later controls remain requirements. This is not an audit or production-readiness claim.
+**Status:** M2 registry/issuance and M3 snapshot controls are implemented and local-validator tested; later action controls remain requirements. This is not an audit or production-readiness claim.
 
 ## Assets and trust boundaries
 
@@ -30,8 +30,8 @@ The table lists controls across the roadmap; it does not mean every control is a
 | Invalid mint/account | Validate the classic SPL Token Program ID, mint, 0 bond decimals, state-appropriate mint authority (BondAuthority before issuance closure, none after), Position owner/seeds/keys, vault mint and PDA owner; reject holder ATAs and substituted accounts. |
 | Unauthorized mint or vault movement | Mint only through issuer-authorized program instruction, CPI-signed by BondAuthority PDA, destination restricted to canonical BondVault. Do not expose generic withdrawal/transfer instructions. Test rogue issuer, wrong mint/vault, and attempted external signature. |
 | Unintended direct bond transfer | No holder receives SPL units and no transfer instruction exists in MVP. Classic Token vault owner is a PDA with no external private key. Test that holder-created token accounts cannot withdraw vault tokens. |
-| Snapshot manipulation | Program-controlled registry, no arbitrary operator-uploaded balances, block direct SPL transfer or gate it through atomic program logic, cutoff mutation guard, registry lock, bounded complete unique entries, sum/supply reconciliation; never rely on arbitrary RPC historical balances. |
-| Snapshot liveness | Permissionless bounded batch/finalization after cutoff; no issuer signature after cutoff; test delayed/restarted cranker and holder cap. |
+| Snapshot manipulation | Close issuance, revoke mint authority, and provide no transfer/mutation instruction. Issuer cannot choose balances. Clock rejects past cutoffs and gates processing until record date. Bounded sequential processing validates registry/Position PDAs and creates one entry per holder; finalization reconciles count/units to registry, bond, mint and vault. Test cutoff, substitution, replay, incompleteness and totals. |
+| Snapshot liveness | Permissionless batches of at most 5 and permissionless finalization after cutoff; cranker cannot choose holder or units. Test cutoff and 100-holder cap. |
 | Overflow/rounding exploit | Integer base units, checked `u128` intermediate and `u64` conversions, input bounds, documented floor and dust policy; boundary/property tests. |
 | Invalid lifecycle transition | Explicit enum/status guards, immutable activated terms/snapshots; test out-of-order and repeated calls. |
 | Insufficient reserves | Full reserve check before `Funded`; one base unit short must fail without state change; wrong-mint and CPI rollback tests. |
@@ -39,22 +39,22 @@ The table lists controls across the roadmap; it does not mean every control is a
 | Misleading UI/indexer | Mark fixtures as mock; on live data show cluster/source/freshness; no fake explorer links; cross-check finalized state and signatures. |
 | Secret leak | No private key/seed/API secret in source or `NEXT_PUBLIC_*`; safe `.env.example`, ignore local env/wallet/validator/build output, audit files and Git history before any public push. |
 
-## M2 implemented controls and test evidence
+## M2–M3 implemented controls and test evidence
 
 Implemented: issuer signer/PDA checks and two-step handoff; unique IDs; bounded terms; classic SPL program ID; 0-decimal mint with BondAuthority; canonical vault PDA/mint/owner; issuer and holder signatures; unique Position/RegistryEntry; 100-holder limit; issuer-only minting to vault; checked accounting and cap; lifecycle guards; aggregate/mint/vault reconciliation; permanent mint-authority revocation. No holder transfer or vault withdrawal instruction exists.
 
 Verification: 3 Rust unit tests, anchor build, TypeScript test typecheck, and 6 Anchor local-validator groups passed. Tests cover issuer initialization/handoff/auth, mint/vault, registration/duplicate, wrong mint/vault, cap/accounting, 100/101 holders, closure/revocation. Tests do not prove absence of all exploits.
 
-Not implemented: record-date guards, snapshots/locks, settlement mint/reserves, coupon, redemption, governance, pause, wallet signing, Devnet, fuzz/property tests, or external audit. Closure uses atomic aggregates and does not scan all Position PDAs.
+M3 implements forward-only dates, issuance freeze, bounded batches, unique holder entries, checked reconciliation, and finalization checks of registry, Bond, mint and vault. Tests cover multi-holder totals, cutoff, unauthorized creation, duplicate/replay, invalid Position, empty issuance, premature/repeated finalization and immutability. Settlement, coupon, redemption, governance, pause, wallet signing, Devnet, fuzzing and audit remain incomplete. Closure itself does not scan Position PDAs.
 
 ## Snapshot invariants
 
-1. The issuer cannot submit arbitrary snapshot balances.
-2. All balance mutations enforce cutoff; positions stay locked while snapshot is built.
-3. Registry is bounded, unique, and complete; snapshot total matches outstanding beneficial positions; total positions equal `BondVault.amount` and mint supply (adjusted only by later burns/redemptions). When issuance closes, mint authority is revoked.
-4. Snapshot entries are immutable; later transfer only affects later snapshots.
-5. Payout, vote, and redemption records are scoped to unique action/proposal identities and cannot be consumed twice.
-6. Payment destination is constrained to the snapshot holder or a separately authorized fixed destination.
+1. Only the frozen program registry supplies snapshot balances.
+2. Snapshot creation requires closed issuance and revoked mint authority. No transfer or post-close mutation exists. Past cutoffs fail; processing starts at/after cutoff.
+3. Registry is bounded to 100 unique sequential holders. Batches validate registry and Position PDAs, create one deterministic entry per holder, and advance the cursor atomically.
+4. Finalization requires each index, exact count/units and reconciliation with closed supply and vault custody. Entries and finalized headers have no mutation instruction.
+5. Future coupon and vote records must reference finalized snapshots. Unique claim/vote/redemption records remain future controls.
+6. Historic balances and transfers are unsupported.
 
 ## Authority and pause model
 
@@ -68,4 +68,4 @@ Test correct/incorrect issuer and holder signers, PDAs, program IDs, 0-decimal b
 
 If a secret appears in files or Git history, stop before publication, explain exposure, and request approval before history rewrite; rotate exposed credentials through their owner. Never paste secrets in chat. Pause a compromised demo and state what is known; do not promise recovery without proof.
 
-Unresolved risks: custodial semantics and issuer/upgrade authority compromise, scaling beyond the 100-holder cap, M3 cutoff semantics, unclaimed settlement-reserve closeout, RPC availability, legal characterization, and no audit. M2 is localnet-only.
+Unresolved risks: custody and authority compromise, scaling beyond 100 holders, issuer-selected future dates, unclaimed reserve closeout, RPC availability, legal characterization and no audit. M2–M3 are localnet-only; snapshot liveness depends on a caller.

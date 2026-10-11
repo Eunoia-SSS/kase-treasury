@@ -8,14 +8,14 @@ This file is the primary development roadmap. M1 specifications define the demon
 
 ## Product scope
 
-The target workflow covers issuer setup, bond registry, snapshots, coupons, redemption, governance, and verifiable transaction history. The Next.js app remains a mock dashboard. M2 issuer, bond, position registry, issuance, and closure instructions are implemented on localnet; snapshots, settlement, redemption, governance, wallet client, and deployment are not implemented. See [PRODUCT_SPEC.md](./PRODUCT_SPEC.md), [PROTOCOL_SPEC.md](./PROTOCOL_SPEC.md), [SECURITY_MODEL.md](./SECURITY_MODEL.md), and [ARCHITECTURE.md](./ARCHITECTURE.md).
+The target workflow covers issuer setup, bond registry, snapshots, coupons, redemption, governance, and verifiable transaction history. The Next.js app remains a mock dashboard. M2 issuer, bond, registry, issuance, closure and M3 snapshots are implemented locally; settlement, coupon, redemption, governance, wallet client and deployment are not implemented. See [PRODUCT_SPEC.md](./PRODUCT_SPEC.md), [PROTOCOL_SPEC.md](./PROTOCOL_SPEC.md), [SECURITY_MODEL.md](./SECURITY_MODEL.md), and [ARCHITECTURE.md](./ARCHITECTURE.md).
 
 ## Proposed architecture
 
 - **Web:** Next.js App Router, TypeScript, Tailwind CSS, reusable components, and a typed data-access boundary. Mock fixtures are the current source.
-- **Program:** M2 Anchor/Rust issuer, bond, custody, registry, issuance, and closure are implemented and localnet-tested. Snapshots, settlement, redemption, governance, and replay records remain future work.
+- **Program:** M2 issuer, bond, custody, registry, issuance, closure and M3 snapshots are implemented and local-validator-tested. Settlement, coupon, redemption, governance and replay records remain future work.
 - **Tokens:** Bond units are whole tokens (0 decimals). DSET (6 decimals) remains planned. M2 creates a classic SPL bond mint and holds units in a BondAuthority PDA vault; no DSET mint/payment exists.
-- **Registry/snapshot:** M2 uses Position PDAs and sequential RegistryEntry PDAs, with compact RegistryState and 100-holder cap. Registration needs holder and issuer signatures. Snapshots and cutoff locks remain M3.
+- **Registry/snapshot:** Position and sequential RegistryEntry PDAs use compact RegistryState and a 100-holder cap. Registration needs holder and issuer signatures. M3 requires issuance closure, forward-only Clock cutoff and batches of at most five sequential holders.
 - **History:** Confirmed transaction signatures and validated program accounts are authoritative. Optional indexer is only a read accelerator.
 - **Release:** Local validator first, then Devnet only. GitHub and Vercel work are later milestones and must not overwrite remote work or expose secrets. No Mainnet deployment.
 
@@ -57,25 +57,39 @@ The target workflow covers issuer setup, bond registry, snapshots, coupons, rede
 - **Tests run:** cargo test -p kase_treasury -q (3 passed); anchor build (success); npm exec -- tsc --noEmit -p tests/tsconfig.json (success); anchor test --provider.wallet target/localnet-wallet.json (6 local-validator groups passed). Coverage includes initialization/authority handoff, mint and vault properties, registration/duplicate rejection, wrong mint/vault, cap/accounting, 100/101 holders, closure and revocation.
 - **Limitations:** Closure reconciles atomic aggregates; it does not iterate every Position PDA. Snapshots, coupons, DSET mint/payment, redemption, governance, wallet/RPC frontend, Devnet, GitHub, and Vercel are not implemented. Anchor macro cfg warnings and Node/bigint warnings remain.
 
-### M3 — Snapshot and corporate-action instructions
+### M3 — Record-date snapshots
 
-- **Tasks:** Implement cutoff timestamp gates, immutable snapshot header/entries, bounded permissionless snapshot batches, supply reconciliation, coupon funding/claims, maturity redemption/retirement, unique replay PDAs, proposal/vote/finalization, and typed events.
-- **Files:** `programs/kase_treasury/src/instructions/{snapshot,coupon,redemption,governance}.rs`, state modules, math/errors/events, integration tests.
-- **Dependencies:** M2 program, registry, token controls, and M1 invariants.
-- **Acceptance:** A/B/C example produces 500/250/100 DSET coupon and 10,000/5,000/2,000 DSET principal; post-cutoff mutation fails; snapshots match registered beneficial positions and vault supply; no transfer exists in MVP; underfunding and duplicate claims/redemptions/votes fail; proposal quorum/majority deterministic.
-- **Tests:** Local-validator happy path and negative tests at timestamp boundaries, repeated calls, wrong accounts, rounding, overflow, incomplete snapshots, insufficient vault, governance tie/quorum, and CPI atomic rollback.
-- **Risks:** Transaction/account limits, cranker liveness, settlement-token CPI behavior, and unclaimed vault recovery policy.
+**Status:** Implemented and verified on a local Solana validator. Snapshot scope only; coupon, payment, redemption and governance execution were not added.
 
-### M4 — Automated verification and security gate
+- Eligibility: close_issuance permanently ends issuance, revokes mint authority, and leaves no transfer or position mutation path. Issuer creates a snapshot after closure with record_date_ts at or after Clock.unix_timestamp. Past dates fail. Processing starts at/after cutoff. The frozen registry defines present/future eligibility; no historical reconstruction is claimed.
+- Accounts: RecordDateSnapshot PDA [snapshot, bond, snapshot_id]; SnapshotEntry PDA [snapshot_entry, snapshot, holder]. Header stores expected/processed counts and units, cursor, status and times/slots. Entries store holder, Position, registry index, units and processing metadata.
+- Instructions: issuer-authorized create_snapshot; permissionless process_snapshot_batch for 1–5 sequential entries; permissionless finalize_snapshot. Holder cap 100. Finalization reconciles count, cursor, units, registry, Bond counters, closed mint supply and vault.
+- Files: Anchor source, integration tests, protocol/security/architecture docs, README and this roadmap.
+- Acceptance: reject past dates, early processing/finalization, duplicate/replayed entries, invalid Position substitution, oversized batches, empty issuance, unauthorized creation and post-finalization mutation. Multi-holder totals reconcile exactly.
+- Verification: Rust format/unit tests, Anchor build, TypeScript test typecheck and local-validator tests. Full suite: 8 passing groups before the final added edge assertions; rerun is pending.
+- Limits: issuance must close before snapshots; no later issuance or transfers. No backdating. Progress depends on a cranker. Holder/batch caps are prototype limits; no audit or Devnet.
+
+### M4 — Corporate-action execution
+
+**Status:** Planned. Consume finalized M3 snapshots without changing finalized entitlements.
+
+- Tasks: add DSET demo settlement mint/vault; coupon schedule, funding and unique claims; maturity redemption with reserve checks, payout, token retirement/burn and unique records; snapshot-weighted proposals/votes with one-vote records and finalization.
+- Files: Anchor instructions/state/errors/events, math helpers, validator tests and protocol/security docs. Frontend remains mock-only.
+- Dependencies: finalized M3 snapshots, M1 integer model and M2 custody.
+- Acceptance: example coupons 500/250/100 DSET and principal 10,000/5,000/2,000 DSET; duplicates prevented; underfunding/bad destinations fail atomically; votes use immutable snapshot weights.
+- Tests: validator happy paths, time boundaries, replay, invalid accounts/mints, rounding/overflow, reserves, CPI rollback, quorum/tie and transitions.
+- Risks: token CPI, account sizing, reserve math and unclaimed-funds policy. Demo tokens have no value.
+
+### M5 — Automated verification and security gate
 
 - **Tasks:** Complete local-validator end-to-end tests, property/boundary tests for financial math, secret/dependency/static checks, manual account/authority review, reproducible test fixtures, and known-limitations list.
 - **Files:** `tests/**`, `programs/kase_treasury/src/**`, CI/test scripts when repository hosting is later approved, `SECURITY_MODEL.md` updates.
-- **Dependencies:** M2 and M3 implementation; local validator and test toolchain.
+- **Dependencies:** M2–M4 implementation; local validator and test toolchain.
 - **Acceptance:** All required invariants in SECURITY_MODEL.md have passing reproducible tests; failures are documented; no unresolved critical issue for a Devnet demo. Passing tests are not described as a security audit.
 - **Tests:** `anchor test`/Rust tests, property cases, account substitution/replay/cutoff/reserve tests; review generated IDL against actual constraints.
 - **Risks:** Test harness can miss token-program edge cases; external audit and production guarantees remain out of scope.
 
-### M5 — Solana Devnet transactions
+### M6 — Solana Devnet transactions
 
 - **Tasks:** Create a throwaway Devnet deployer only when approved, deploy and verify program ID/IDL/authority, create demo mints/accounts, run issuance → snapshot → coupon → governance → redemption script, retain signatures and expected outputs.
 - **Files:** `scripts/devnet-demo.*`, sanitized config/docs, `Anchor.toml` Devnet config, demo guide.
@@ -84,7 +98,7 @@ The target workflow covers issuer setup, bond registry, snapshots, coupons, rede
 - **Tests:** Scripted Devnet smoke test, account/signature verification, insufficient-faucet/RPC retry behavior.
 - **Risks:** Devnet reset/faucet/RPC outages, leaked deployer key, upgrade-authority ambiguity. Keep deployer secrets outside repository.
 
-### M6 — Frontend integration
+### M7 — Frontend integration
 
 - **Tasks:** Add wallet provider and typed Anchor client; implement read/write workflows and transaction simulation/confirmation/errors; replace mock data only when corresponding chain data is live; expose source, cluster, slot, and signature.
 - **Files:** `src/providers/**`, `src/lib/solana/**`, typed data-access adapters, route/components and accessible states.
@@ -93,7 +107,7 @@ The target workflow covers issuer setup, bond registry, snapshots, coupons, rede
 - **Tests:** Unit tests for client mapping/formatting, browser smoke tests, wallet rejection/network mismatch/failed-confirmation tests, repeat Devnet end-to-end demo.
 - **Risks:** Wallet compatibility, stale RPC/indexed data, transaction simulation/confirmation UX, accessibility regressions.
 
-### M7 — GitHub integration and project documentation
+### M8 — GitHub workflow and project documentation
 
 - **Tasks:** Confirm the exact repository URL and ownership; inspect branch/remotes/history; audit tracked/untracked files and Git history for keys, seeds, tokens, RPC credentials, local validator files, dependencies, and build outputs; reconcile fetched remote without force; add CI and reproducibility docs.
 - **Files:** `.gitignore`, safe `.env.example`, workflow config, README/demo/security docs, Git metadata only after explicit user instruction.
@@ -102,7 +116,7 @@ The target workflow covers issuer setup, bond registry, snapshots, coupons, rede
 - **Tests:** Local security/secret scan plus GitHub commit/branch verification. If sensitive history is found, stop and get approval before rewriting it.
 - **Risks:** Remote divergent work, wrong repository, secret exposure, authentication. Never ask for password/token in chat; user completes authorization flow.
 
-### M8 — Vercel frontend deployment
+### M9 — Vercel frontend deployment
 
 - **Tasks:** Connect only reviewed GitHub repository, configure public cluster/program/RPC values and protected variables as needed, deploy preview, verify independent-project labels and routes.
 - **Files:** Vercel project settings and deployment docs; avoid committing credentials.
@@ -111,7 +125,7 @@ The target workflow covers issuer setup, bond registry, snapshots, coupons, rede
 - **Tests:** Production build in deployment, route/responsive smoke test, environment inspection, Devnet read/write sanity checks as appropriate.
 - **Risks:** Build/runtime environment drift, public environment leakage, RPC limits, accidental misleading production claims.
 
-### M9 — Hackathon documentation and demonstration
+### M10 — Hackathon documentation and demonstration
 
 - **Tasks:** Prepare problem statement, user flow, architecture, threat model, known limitations, reproducible Devnet guide, judge walkthrough and screenshots/video; map claims only to verified implementation.
 - **Files:** `docs/demo-guide.md`, architecture/security/product docs, evidence assets and presentation materials if requested.
@@ -141,4 +155,4 @@ The target workflow covers issuer setup, bond registry, snapshots, coupons, rede
 
 ## Current status and next gate
 
-M0 remains a mock-only frontend; dev server and production build were previously reported working. M1 documentation is complete. M2 issuer, bond, custody, registry, issuance, and closure passed local checks. No GitHub remote or deployment exists. **Next: M3 record-date snapshots, cutoff enforcement, bounded batches, and immutable finalization.**
+M0 remains a mock-only frontend; dev server and production build were previously reported working. M1 documentation is complete. M2 issuer, bond, registry, issuance and closure plus M3 snapshots passed local checks. M2 is pushed to GitHub; M3 remains local and unpushed. No Devnet or Vercel deployment exists. **Next: M4 coupon settlement, redemption and governance using finalized snapshots.**

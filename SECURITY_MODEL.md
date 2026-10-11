@@ -1,6 +1,6 @@
 # KASE Treasury — Security Model
 
-**Status:** M2 registry/issuance, M3 snapshots, M4 coupon controls, and M5 principal redemption are implemented and local-validator tested. Governance remains a requirement. Passing tests do not constitute an audit.
+**Status:** M2 registry/issuance, M3 snapshots, M4 coupon controls, M5 principal redemption, and M6 governance are implemented and local-validator tested. Passing tests do not constitute an audit.
 
 ## Assets and trust boundaries
 
@@ -26,7 +26,7 @@ The table lists controls across the roadmap; it does not mean every control is a
 | Upgrade-key compromise | Separate and document upgrade authority; Devnet-only deployer key kept outside repo; consider multisig before public release. |
 | Duplicate coupon | Implemented unique `CouponPeriod(bond,period_id)` and `ClaimRecord(coupon,holder)` PDAs; one exact reserve; signer-bound entitlement; transfer and accounting update atomic. Local-validator tests replay. |
 | Duplicate redemption | Implemented one [redemption, bond] event PDA and one [redemption_claim, redemption, holder] receipt. Holder signature, fixed SnapshotEntry, exact principal and atomic transfer/accounting prevent replay. Activation requires full funding before burning custody supply. |
-| Duplicate/overweight vote | Unique vote PDA, immutable snapshot weight, tally bounded by eligible units; test duplicate and ineligible voter. |
+| Duplicate/overweight vote | Implemented VoteReceipt PDA [vote_receipt, proposal, holder], holder signature, SnapshotEntry units and checked tally bounded by snapshot power; local-validator tests cover replay and ineligible/wrong snapshot accounts. |
 | Invalid mint/account | Validate the classic SPL Token Program ID, mint, 0 bond decimals, state-appropriate mint authority (BondAuthority before issuance closure, none after), Position owner/seeds/keys, vault mint and PDA owner; reject holder ATAs and substituted accounts. |
 | Unauthorized mint or vault movement | Mint only through issuer-authorized program instruction, CPI-signed by BondAuthority PDA, destination restricted to canonical BondVault. Do not expose generic withdrawal/transfer instructions. Test rogue issuer, wrong mint/vault, and attempted external signature. |
 | Unintended direct bond transfer | No holder receives SPL units and no transfer instruction exists in MVP. Classic Token vault owner is a PDA with no external private key. Test that holder-created token accounts cannot withdraw vault tokens. |
@@ -39,13 +39,13 @@ The table lists controls across the roadmap; it does not mean every control is a
 | Misleading UI/indexer | Mark fixtures as mock; on live data show cluster/source/freshness; no fake explorer links; cross-check finalized state and signatures. |
 | Secret leak | No private key/seed/API secret in source or `NEXT_PUBLIC_*`; safe `.env.example`, ignore local env/wallet/validator/build output, audit files and Git history before any public push. |
 
-## M2–M3 implemented controls and test evidence
+## M2-M6 implemented controls and test evidence
 
 Implemented: issuer signer/PDA checks and two-step handoff; unique IDs; bounded terms; classic SPL program ID; 0-decimal mint with BondAuthority; canonical vault PDA/mint/owner; issuer and holder signatures; unique Position/RegistryEntry; 100-holder limit; issuer-only minting to vault; checked accounting and cap; lifecycle guards; aggregate/mint/vault reconciliation; permanent mint-authority revocation. No holder transfer or vault withdrawal instruction exists.
 
 Verification: 3 Rust unit tests, anchor build, TypeScript test typecheck, and 6 Anchor local-validator groups passed. Tests cover issuer initialization/handoff/auth, mint/vault, registration/duplicate, wrong mint/vault, cap/accounting, 100/101 holders, closure/revocation. Tests do not prove absence of all exploits.
 
-M3 implements forward-only dates, issuance freeze, bounded batches, unique holder entries, checked reconciliation, and finalization checks of registry, Bond, mint and vault. M4 implements six-decimal settlement configuration, immutable coupon terms, exact funding, holder-signed claims, replay records and atomic accounting. M5 implements maturity-gated redemption, separate escrow, full funding, permissionless activation, full custody burn, terminal Bond state and receipts. Funded coupons remain claimable after redemption. Tests cover payout amounts, duplicate/auth/account failures, time boundaries, reserves and M2-M4 regressions. Governance, Devnet, fuzzing and audit remain incomplete. Closure does not scan every Position.
+M3 implements forward-only dates, issuance freeze, bounded batches, unique holder entries, checked reconciliation, and finalization checks of registry, Bond, mint and vault. M4 implements six-decimal settlement configuration, immutable coupon terms, exact funding, holder-signed claims, replay records and atomic accounting. M5 implements maturity-gated redemption, separate escrow, full funding, permissionless activation, full custody burn, terminal Bond state and receipts. M6 implements issuer-created immutable proposals, holder-signed snapshot-weighted VoteReceipts, checked 100-holder-bounded tallies, integer quorum/approval and permissionless one-time finalization. Funded coupons remain claimable after redemption; open proposals remain bound to their snapshots. Tests cover all M2-M6 flows. Devnet, fuzzing and audit remain incomplete. Closure does not scan every Position.
 
 ## Snapshot invariants
 
@@ -53,7 +53,7 @@ M3 implements forward-only dates, issuance freeze, bounded batches, unique holde
 2. Snapshot creation requires closed issuance and revoked mint authority. No transfer or post-close mutation exists. Past cutoffs fail; processing starts at/after cutoff.
 3. Registry is bounded to 100 unique sequential holders. Batches validate registry and Position PDAs, create one deterministic entry per holder, and advance the cursor atomically.
 4. Finalization requires each index, exact count/units and reconciliation with closed supply and vault custody. Entries and finalized headers have no mutation instruction.
-5. Coupon and redemption claims reference finalized snapshots and immutable SnapshotEntry units; unique action/holder receipts prevent replay.
+5. Coupon, redemption, and governance actions reference finalized snapshots and immutable SnapshotEntry units; unique action/holder receipts prevent replay.
 6. At activation, mint supply and custody vault become zero. Bond.outstanding becomes zero while Bond.issued, registry totals, Positions and snapshots retain historical values; terminal status prevents treating these values as live supply.
 7. Historic external balances and transfers are unsupported.
 
@@ -80,12 +80,21 @@ Issuer authority configures bonds/actions/proposals; safe snapshot processing, c
 - Recorded reserve remaining is funded minus paid. Actual escrow must be at least that amount; claims cannot exceed it. Unsolicited deposits never increase entitlements and may remain locked as surplus.
 - Previously funded coupon claims remain valid after redemption. New coupon periods are blocked. Historical snapshots, positions, registry totals and Bond.issued stay immutable.
 
+## M6 governance invariants
+
+- Proposal PDA identity is [governance_proposal, bond, proposal_id]. Only the current issuer authority may create one, and only against a finalized same-bond snapshot for a non-redeemed bond. A nonzero content hash and fixed title/terms are stored at creation; no update instruction exists.
+- Vote eligibility comes from the PDA-derived SnapshotEntry and its recorded units. Holder must sign. Position and current token balances are not supplied to or read by cast_vote. A separate payer can fund receipt rent but cannot vote for the holder.
+- VoteReceipt PDA identity is [vote_receipt, proposal, holder]. Creation is one-time and stores choice, weight, time and slot. Proposal tallies use checked additions; yes + no + abstain equals participation, participation is no greater than frozen eligible power, and voters cannot exceed snapshot holder count.
+- The voting window is [start, end), start is not earlier than creation Clock time, and duration is capped at 365 days. Finalization is permissionless at or after end and can happen once. It rechecks the finalized snapshot and all totals.
+- Quorum and approval use checked integer basis-point comparisons. Abstain counts for quorum only. No quorum or no decisive votes rejects. A passed result is informational; no arbitrary CPI, financial-term mutation, or corporate-action execution is reachable from governance.
+- Redemption blocks new proposals but does not rewrite an existing snapshot or open proposal. Existing proposal votes remain informational and cannot alter coupon or principal entitlements.
+
 ## Required security tests before Devnet demo
 
-Test correct/incorrect issuer and holder signers, PDAs, program IDs, 0-decimal bond mint, mint authority, vault token owner/mint, registry membership, duplicate holder and 100-holder cap, issuance overflow and closed issuance; verify no holder ATA receives units and no external wallet can move vault tokens. Later gates test cutoff boundary and lock, snapshot batching/completeness/duplicates/mismatch/cap/resumption; math, underfunding, duplicate claims/redemption, governance, CPI rollback, pause, and authority handoff. Local tests, static review, fuzzing, and dependency review are not an external audit; Devnet is not production readiness.
+Test correct/incorrect issuer and holder signers, PDAs, program IDs, 0-decimal bond mint, mint authority, vault token owner/mint, registry membership, duplicate holder and 100-holder cap, issuance overflow and closed issuance; verify no holder ATA receives units and no external wallet can move vault tokens. M6 local-validator tests cover proposal authorization/duplication, unfinalized/wrong snapshot/bond proposal accounts, holder signatures, vote replay, exact snapshot weights, before/after boundaries, early/double finalization, exact quorum and strict approval thresholds, abstain-only/no-vote outcomes, and redemption compatibility. Later gates add fuzzing, CPI rollback review, pause, static/dependency review, and authority handoff. Local tests, static review, fuzzing, and dependency review are not an external audit; Devnet is not production readiness.
 
 ## Incident and residual risks
 
 If a secret appears in files or Git history, stop before publication, explain exposure, and request approval before history rewrite; rotate exposed credentials through their owner. Never paste secrets in chat. Pause a compromised demo and state what is known; do not promise recovery without proof.
 
-Unresolved risks: custody and authority compromise, scaling beyond 100 holders, issuer-selected future dates, unclaimed reserve closeout, RPC availability, legal characterization and no audit. M2–M3 are localnet-only; snapshot liveness depends on a caller.
+Unresolved risks: custody and authority compromise, scaling beyond 100 holders, issuer-selected future dates, unclaimed reserve closeout, RPC availability, legal characterization and no audit. M2-M6 are localnet-only; snapshot liveness depends on a caller.

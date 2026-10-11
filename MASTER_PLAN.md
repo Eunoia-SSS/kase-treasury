@@ -8,12 +8,12 @@ This file is the primary development roadmap. M1 specifications define the demon
 
 ## Product scope
 
-The target workflow covers issuer setup, bond registry, snapshots, coupons, redemption, governance, and verifiable transaction history. The Next.js app remains a mock dashboard. M2 issuance/registry, M3 snapshots, M4 coupon settlement, and M5 principal redemption are implemented and local-validator-tested. Governance execution, wallet client, and deployment remain unimplemented. See [PRODUCT_SPEC.md](./PRODUCT_SPEC.md), [PROTOCOL_SPEC.md](./PROTOCOL_SPEC.md), [SECURITY_MODEL.md](./SECURITY_MODEL.md), and [ARCHITECTURE.md](./ARCHITECTURE.md).
+The target workflow covers issuer setup, bond registry, snapshots, coupons, redemption, governance, and verifiable transaction history. The Next.js app remains a mock dashboard. M2 issuance/registry, M3 snapshots, M4 coupon settlement, M5 principal redemption, and M6 snapshot-weighted governance are implemented and local-validator-tested. Wallet client and deployment remain unimplemented. See [PRODUCT_SPEC.md](./PRODUCT_SPEC.md), [PROTOCOL_SPEC.md](./PROTOCOL_SPEC.md), [SECURITY_MODEL.md](./SECURITY_MODEL.md), and [ARCHITECTURE.md](./ARCHITECTURE.md).
 
 ## Proposed architecture
 
 - **Web:** Next.js App Router, TypeScript, Tailwind CSS, reusable components, and a typed data-access boundary. Mock fixtures are the current source.
-- **Program:** M2 issuer, bond, custody, registry, issuance and closure; M3 snapshots; M4 coupon configuration, funding, and claims; and M5 principal redemption are implemented and local-validator-tested. Governance and frontend chain workflows remain future work.
+- **Program:** M2 issuer, bond, custody, registry, issuance and closure; M3 snapshots; M4 coupon configuration, funding, and claims; M5 principal redemption; and M6 informational governance are implemented and local-validator-tested. Frontend chain workflows remain future work.
 - **Tokens:** Bond units are whole tokens (0 decimals). M2 creates a classic SPL bond mint in a BondAuthority PDA vault. M4/M5 use an existing issuer-registered classic SPL six-decimal demo settlement mint; the program does not mint DSET.
 - **Registry/snapshot:** Position and sequential RegistryEntry PDAs use compact RegistryState and a 100-holder cap. Registration needs holder and issuer signatures. M3 requires issuance closure, forward-only Clock cutoff and batches of at most five sequential holders.
 - **History:** Confirmed transaction signatures and validated program accounts are authoritative. Optional indexer is only a read accelerator.
@@ -95,15 +95,16 @@ The target workflow covers issuer setup, bond registry, snapshots, coupons, rede
 - **Acceptance/tests:** Local validator checks 10/5/2 units, 10,000/5,000/2,000 DSET, 17,000 DSET reserve, maturity, exact funding, wrong/unauthorized accounts, duplicate event/claims, premature activation, full SPL burn, terminal restrictions, coupon compatibility and M2-M4 regressions. Unit tests cover account sizes and checked conversion.
 - **Limits:** 100 holders; no recovery, Devnet, wallet integration, governance or audit.
 
-### M6 — Bondholder governance
+### M6 - Bondholder governance
 
-**Status:** Planned; not implemented.
+**Status:** Implemented and verified with Anchor local-validator integration tests. Governance records informational outcomes only; it executes no financial or privileged action.
 
-- **Tasks:** Issuer creates immutable proposal against finalized snapshot; eligibility and whole-bond vote weight come from SnapshotEntry; each holder votes once; bounded tally; permissionless finalization after voting period; passing result records approval only.
-- **Files/dependencies:** Anchor proposal/vote accounts, tests, errors/events and docs; depends on M3 snapshots and M5 terminal lifecycle.
-- **Acceptance:** Authorized creation; no early or duplicate votes; tally never exceeds snapshot eligibility; quorum/majority deterministic; approved proposals do not rewrite historical snapshots, funded coupons or redemption amounts.
-- **Tests:** Success, ineligible voter, duplicate, wrong snapshot, date boundaries, overflow/cap and result checks.
-- **Risks:** Proposal integrity, quorum/abstain rules, tally liveness and future-effective amendments.
+- **Accounts:** Proposal PDA [governance_proposal, bond, proposal_id]; VoteReceipt PDA [vote_receipt, proposal, holder]. Proposal stores immutable title/content hash, issuer, finalized snapshot, window, basis-point thresholds and frozen eligible voting power, plus checked tallies/status.
+- **Instructions:** create_proposal (current issuer, closed and not redeemed bond, finalized same-bond nonempty snapshot, unique 32-byte ID, nonzero content hash, bounded title, valid window no longer than 365 days); cast_vote (eligible holder signature and exact SnapshotEntry, one receipt, weight from snapshot units); finalize_proposal (permissionless at/after deadline, validates tallies and stores Passed or Rejected).
+- **Rules:** Demo settings use 5,000 bps quorum and 5,000 bps approval. Quorum is participation * 10,000 >= eligible power * quorum_bps. Abstain counts toward participation/quorum. Approval requires yes * 10,000 > (yes + no) * approval_bps; no decisive votes or unmet quorum rejects. All comparisons use checked u128 arithmetic. Voting interval is [start, end).
+- **Redemption:** No proposal may be created once Bond is terminal Redeemed. A proposal opened earlier remains open and uses its original finalized snapshot after redemption; votes remain informational and cannot affect financial state.
+- **Tests:** Full M2-M6 local-validator suite covers 10/5/2 Yes/No/Abstain weights, duplicate/ineligible/wrong-bond/wrong-snapshot votes, invalid proposal snapshots, issuer authorization, time boundaries, invalid windows/thresholds, exact quorum, strict approval boundary, no-vote and abstain-only rejection, double finalization, post-redemption restrictions, and M2-M5 regressions.
+- **Limits:** One vote per holder, no delegation/split votes, 100-holder cap, max 365-day window, no amendment executor, no quorum extension/cancellation, and no audit. Hash integrity depends on clients retaining the exact proposal content that was hashed.
 
 ### M7 — Automated verification and security gate
 
@@ -165,4 +166,4 @@ The target workflow covers issuer setup, bond registry, snapshots, coupons, rede
 
 ## Current status and next gate
 
-M0 remains a mock-only frontend; dev server and production build were previously reported working. M1 documentation is complete. M2-M4 are committed on the remote branch. M5 principal redemption is implemented locally and unpushed; M6 governance remains unimplemented. No Devnet or Vercel deployment exists. **Next: M6 governance, after approval.**
+M0 remains a mock-only frontend; dev server and production build were previously reported working. M1 documentation is complete. M2-M5 are on the remote branch. M6 governance is implemented and locally tested in the current unpushed worktree. No Devnet or Vercel deployment exists. **Next: M7 automated verification and security gate.**

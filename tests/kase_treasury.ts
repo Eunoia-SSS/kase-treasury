@@ -277,7 +277,7 @@ describe("KASE Treasury M3 record-date snapshots", function () {
     await closeIssuance(f);
 
     const id = bytes();
-    const date = (await clockUnix()) + 2;
+    const date = (await clockUnix()) + 10;
     const snapshotPda = await createSnapshot(f, id, date);
     const deadline = Date.now() + 30_000;
     while (await clockUnix() < date && Date.now() < deadline) {
@@ -474,6 +474,46 @@ function claimRedemptionAccounts(f:F,snapshot:web3.PublicKey,mint:web3.PublicKey
     destination,receipt:redemptionReceiptAddress(redemption,holder.publicKey),payer:provider.wallet.publicKey,
     tokenProgram:TOKEN_PROGRAM_ID,systemProgram:SystemProgram.programId,rent:SYSVAR_RENT_PUBKEY};
 }
+function proposalAddress(f:F, proposalId:number[]):web3.PublicKey {
+  return addr([Buffer.from("governance_proposal"),f.bond.toBuffer(),Buffer.from(proposalId)]);
+}
+function voteReceiptAddress(proposal:web3.PublicKey, voter:web3.PublicKey):web3.PublicKey {
+  return addr([Buffer.from("vote_receipt"),proposal.toBuffer(),voter.toBuffer()]);
+}
+function proposalAccounts(f:F,snapshot:web3.PublicKey,proposalId:number[],overrides:{authority?:web3.PublicKey;bond?:web3.PublicKey;snapshot?:web3.PublicKey}={}):any {
+  return {config:f.config,authority:overrides.authority??provider.wallet.publicKey,bond:overrides.bond??f.bond,
+    snapshot:overrides.snapshot??snapshot,proposal:proposalAddress(f,proposalId),systemProgram:SystemProgram.programId};
+}
+async function createProposal(
+  f:F,snapshot:web3.PublicKey,proposalId:number[],start:number,end:number,
+  options:{authority?:web3.PublicKey;authoritySigner?:web3.Keypair;bond?:web3.PublicKey;snapshotAccount?:web3.PublicKey;title?:string;contentHash?:number[];quorumBps?:number;approvalBps?:number}={},
+):Promise<web3.PublicKey> {
+  const proposal=proposalAddress(f,proposalId);
+  const builder=program.methods.createProposal(
+    proposalId,options.title??"Approve educational amendment",options.contentHash??bytes(),
+    new BN(start),new BN(end),options.quorumBps??5_000,options.approvalBps??5_000,
+  ).accountsStrict(proposalAccounts(f,snapshot,proposalId,{
+    authority:options.authority,bond:options.bond,snapshot:options.snapshotAccount,
+  }));
+  if(options.authoritySigner) builder.signers([options.authoritySigner]);
+  await builder.rpc();
+  return proposal;
+}
+function voteAccounts(f:F,snapshot:web3.PublicKey,proposal:web3.PublicKey,holder:web3.Keypair,overrides:Record<string,web3.PublicKey>={}):any {
+  return {proposal:overrides.proposal??proposal,bond:overrides.bond??f.bond,snapshot:overrides.snapshot??snapshot,
+    holder:holder.publicKey,snapshotEntry:overrides.snapshotEntry??snapshotEntryAddress(snapshot,holder.publicKey),
+    receipt:voteReceiptAddress(proposal,holder.publicKey),payer:provider.wallet.publicKey,systemProgram:SystemProgram.programId};
+}
+async function castVote(f:F,snapshot:web3.PublicKey,proposal:web3.PublicKey,holder:web3.Keypair,choice:{yes:{};no?:never;abstain?:never}|{no:{};yes?:never;abstain?:never}|{abstain:{};yes?:never;no?:never},overrides:Record<string,web3.PublicKey>={}):Promise<void> {
+  await program.methods.castVote(choice as any).accountsStrict(voteAccounts(f,snapshot,proposal,holder,overrides)).signers([holder]).rpc();
+}
+function finalizeProposalAccounts(f:F,snapshot:web3.PublicKey,proposal:web3.PublicKey,overrides:Record<string,web3.PublicKey>={}):any {
+  return {proposal:overrides.proposal??proposal,bond:overrides.bond??f.bond,snapshot:overrides.snapshot??snapshot,finalizer:provider.wallet.publicKey};
+}
+async function finalizeProposal(f:F,snapshot:web3.PublicKey,proposal:web3.PublicKey,overrides:Record<string,web3.PublicKey>={}):Promise<void> {
+  await program.methods.finalizeProposal().accountsStrict(finalizeProposalAccounts(f,snapshot,proposal,overrides)).rpc();
+}
+
 async function waitForClock(target:number):Promise<void> {
   const deadline=Date.now()+45_000;
   while(await clockUnix()<target && Date.now()<deadline) await new Promise(resolve=>setTimeout(resolve,250));
@@ -486,6 +526,8 @@ describe("KASE Treasury M5 principal redemption",function(){
     const f=await make(100,12);
     const holders=[await register(f,web3.Keypair.generate(),10),await register(f,web3.Keypair.generate(),5),await register(f,web3.Keypair.generate(),2)];
     const {snapshot,recordDate}=await makeFinalizedSnapshot(f,holders);
+    const openStart=(await clockUnix())+1;
+    const openGovernanceProposal=await createProposal(f,snapshot,bytes(),openStart,openStart+180);
     const {mint,source,mintAuthority}=await makeDset(f);
     const prepared=createRedemptionAccounts(f,snapshot,mint);
     await fails(program.methods.createRedemption().accountsStrict(prepared.accounts).rpc(),"redemption before maturity");
@@ -554,6 +596,14 @@ describe("KASE Treasury M5 principal redemption",function(){
     assert.equal(bond.outstanding.toString(),"0");
     assert.equal((await program.account.registryState.fetch(f.registry)).totalUnits.toString(),"17","registry history remains intact");
 
+    const stillOpenProposal=await program.account.proposal.fetch(openGovernanceProposal);
+    assert.ok(stillOpenProposal.status.open!==undefined,"a pre-redemption proposal remains snapshot-bound and open");
+    await castVote(f,snapshot,openGovernanceProposal,holders[0],{yes:{}});
+    assert.equal((await program.account.proposal.fetch(openGovernanceProposal)).yesVotingPower.toString(),"10");
+    const blockedProposalId=bytes();
+    const blockedStart=(await clockUnix())+2;
+    await fails(createProposal(f,snapshot,blockedProposalId,blockedStart,blockedStart+10),"proposal creation after terminal redemption");
+
     await fails(program.methods.issueUnits(new BN(1)).accountsStrict(issueAccounts(f,holders[0])).rpc(),"issue after terminal redemption");
     await fails(createSnapshot(f,bytes(),await clockUnix()),"new snapshot after terminal redemption");
     await fails(program.methods.claimRedemption().accountsStrict(claimRedemptionAccounts(f,snapshot,mint,holders[0],wrongDest)).signers([holders[0]]).rpc(),"destination belongs to different investor");
@@ -579,5 +629,110 @@ describe("KASE Treasury M5 principal redemption",function(){
     assert.deepEqual(await Promise.all(holders.map(async h=>(await program.account.redemptionReceipt.fetch(redemptionReceiptAddress(prepared.redemption,h.publicKey))).amountBase.toString())),["10000000000","5000000000","2000000000"]);
     assert.equal((await waitTokenAmount(redemptionEscrow,0n)).amount,0n);
     assert.equal((await waitTokenAmount(f.vault,0n)).amount,0n);
+  });
+});
+
+describe("KASE Treasury M6 bondholder governance",function(){
+  this.timeout(1_000_000);
+
+  it("creates immutable snapshot-bound proposals and tallies signed 10/5/2 votes",async()=>{
+    const f=await make(100);
+    const holders=[await register(f,web3.Keypair.generate(),10),await register(f,web3.Keypair.generate(),5),await register(f,web3.Keypair.generate(),2)];
+    const {snapshot}=await makeFinalizedSnapshot(f,holders);
+    const wrongBond=await make(2);
+    const wrongBondHolder=await register(wrongBond,web3.Keypair.generate(),1);
+    const wrongSnapshot=(await makeFinalizedSnapshot(wrongBond,[wrongBondHolder])).snapshot;
+    const id=bytes();
+    const validationNow=await clockUnix();
+    const validationStart=validationNow+30;
+    const validationEnd=validationStart+5;
+    const outsider=web3.Keypair.generate();
+    await fails(createProposal(f,snapshot,bytes(),validationStart,validationEnd,{authority:outsider.publicKey,authoritySigner:outsider}),"unauthorized proposal issuer");
+    await fails(createProposal(f,snapshot,bytes(),validationStart,validationEnd,{bond:wrongBond.bond}),"proposal with incorrect bond");
+    await fails(createProposal(f,snapshot,bytes(),validationStart,validationEnd,{snapshotAccount:wrongSnapshot}),"proposal with another bond snapshot");
+    const pendingSnapshot=await createSnapshot(f,bytes(),(await clockUnix())+30);
+    await fails(createProposal(f,pendingSnapshot,bytes(),validationStart,validationEnd),"proposal with unfinalized snapshot");
+    await fails(createProposal(f,snapshot,bytes(),validationNow-1,validationNow+2),"past proposal start");
+    await fails(createProposal(f,snapshot,bytes(),validationStart,validationStart),"empty voting window");
+    await fails(createProposal(f,snapshot,bytes(),validationStart,validationStart+31_536_000+1),"excessive voting window");
+    await fails(createProposal(f,snapshot,bytes(),validationStart,validationEnd,{title:"   "}),"empty proposal title");
+    await fails(createProposal(f,snapshot,bytes(),validationStart,validationEnd,{quorumBps:0}),"zero quorum");
+    await fails(createProposal(f,snapshot,bytes(),validationStart,validationEnd,{approvalBps:10_001}),"approval threshold above 100 percent");
+
+    const start=(await clockUnix())+15;
+    const end=start+5;
+    const proposalPda=proposalAddress(f,id);
+    await createProposal(f,snapshot,id,start,end);
+    let proposal=await program.account.proposal.fetch(proposalPda);
+    assert.equal(proposal.eligibleVotingPower.toString(),"17");
+    assert.equal(proposal.quorumBps,5_000);
+    assert.equal(proposal.approvalBps,5_000);
+    assert.equal(proposal.title,"Approve educational amendment");
+    const originalHash=proposal.contentHash;
+    await fails(program.methods.castVote({yes:{}}).accountsStrict(voteAccounts(f,snapshot,proposalPda,holders[0])).signers([holders[0]]).rpc(),"vote before voting start");
+    await fails(finalizeProposal(f,snapshot,proposalPda),"finalize before voting deadline");
+    await fails(createProposal(f,snapshot,id,start,end),"duplicate proposal identifier");
+    await fails(castVote(f,snapshot,proposalPda,holders[0],{yes:{}},{bond:wrongBond.bond}),"vote with incorrect bond account");
+    await fails(castVote(f,snapshot,proposalPda,holders[0],{yes:{}},{snapshot:wrongSnapshot}),"vote with another finalized bond snapshot");
+    const wrongEntry=snapshotEntryAddress(snapshot,holders[1].publicKey);
+    await fails(castVote(f,snapshot,proposalPda,holders[0],{yes:{}},{snapshotEntry:wrongEntry}),"snapshot entry for another investor");
+    const unauthorizedVoter=web3.Keypair.generate();
+    await fails(castVote(f,snapshot,proposalPda,unauthorizedVoter,{yes:{}}),"wallet absent from finalized snapshot");
+
+    await waitForClock(start);
+    await castVote(f,snapshot,proposalPda,holders[0],{yes:{}});
+    await fails(castVote(f,snapshot,proposalPda,holders[0],{no:{}}),"duplicate vote receipt");
+    await castVote(f,snapshot,proposalPda,holders[1],{no:{}});
+    await castVote(f,snapshot,proposalPda,holders[2],{abstain:{}});
+    proposal=await program.account.proposal.fetch(proposalPda);
+    assert.equal(proposal.yesVotingPower.toString(),"10");
+    assert.equal(proposal.noVotingPower.toString(),"5");
+    assert.equal(proposal.abstainVotingPower.toString(),"2");
+    assert.equal(proposal.participatingVotingPower.toString(),"17");
+    assert.equal(proposal.voterCount,3);
+    assert.equal((await program.account.voteReceipt.fetch(voteReceiptAddress(proposalPda,holders[0].publicKey))).weight.toString(),"10");
+    await waitForClock(end);
+    await fails(castVote(f,snapshot,proposalPda,holders[0],{yes:{}}),"vote after deadline");
+    await finalizeProposal(f,snapshot,proposalPda);
+    proposal=await program.account.proposal.fetch(proposalPda);
+    assert.ok(proposal.status.passed!==undefined);
+    assert.equal(proposal.yesVotingPower.toString(),"10");
+    assert.deepEqual(proposal.contentHash,originalHash);
+    await fails(finalizeProposal(f,snapshot,proposalPda),"double finalization");
+    await fails(castVote(f,snapshot,proposalPda,holders[0],{yes:{}}),"vote after finalization");
+  });
+
+  it("applies exact quorum and strict approval boundaries, rejects no-vote and abstain-only proposals",async()=>{
+    const f=await make(30);
+    const holders=[await register(f,web3.Keypair.generate(),10),await register(f,web3.Keypair.generate(),10)];
+    const {snapshot}=await makeFinalizedSnapshot(f,holders);
+    const start=(await clockUnix())+3;
+    const end=start+4;
+    const exactQuorum=await createProposal(f,snapshot,bytes(),start,end,{quorumBps:5_000,approvalBps:5_000});
+    const exactApproval=await createProposal(f,snapshot,bytes(),start,end,{quorumBps:10_000,approvalBps:5_000});
+    const abstainOnly=await createProposal(f,snapshot,bytes(),start,end,{quorumBps:10_000,approvalBps:5_000});
+    const noVotes=await createProposal(f,snapshot,bytes(),start,end,{quorumBps:5_000,approvalBps:5_000});
+    await waitForClock(start);
+    await castVote(f,snapshot,exactQuorum,holders[0],{yes:{}});
+    await castVote(f,snapshot,exactApproval,holders[0],{yes:{}});
+    await castVote(f,snapshot,exactApproval,holders[1],{no:{}});
+    await castVote(f,snapshot,abstainOnly,holders[0],{abstain:{}});
+    await castVote(f,snapshot,abstainOnly,holders[1],{abstain:{}});
+    await waitForClock(end);
+    await finalizeProposal(f,snapshot,exactQuorum);
+    await finalizeProposal(f,snapshot,exactApproval);
+    await finalizeProposal(f,snapshot,abstainOnly);
+    await finalizeProposal(f,snapshot,noVotes);
+    const [q,a,abstain,none]=await Promise.all([
+      program.account.proposal.fetch(exactQuorum),program.account.proposal.fetch(exactApproval),
+      program.account.proposal.fetch(abstainOnly),program.account.proposal.fetch(noVotes),
+    ]);
+    assert.ok(q.status.passed!==undefined,"exact 50% quorum passes when Yes is unanimous among decisive votes");
+    assert.equal(q.participatingVotingPower.toString(),"10");
+    assert.ok(a.status.rejected!==undefined,"exactly 50% Yes does not satisfy the strict approval threshold");
+    assert.ok(abstain.status.rejected!==undefined,"abstentions count for quorum but cannot approve a proposal");
+    assert.equal(abstain.abstainVotingPower.toString(),"20");
+    assert.ok(none.status.rejected!==undefined,"zero participation cannot meet quorum");
+    await fails(finalizeProposal(f,snapshot,exactQuorum),"repeat finalization");
   });
 });

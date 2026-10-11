@@ -29,9 +29,14 @@ pub const REDEMPTION: &[u8] = b"redemption";
 pub const REDEMPTION_AUTHORITY: &[u8] = b"redemption_authority";
 pub const REDEMPTION_VAULT: &[u8] = b"redemption_vault";
 pub const REDEMPTION_CLAIM: &[u8] = b"redemption_claim";
+pub const PROPOSAL: &[u8] = b"governance_proposal";
+pub const VOTE_RECEIPT: &[u8] = b"vote_receipt";
 pub const DSET_DECIMALS: u8 = 6;
 pub const MAX_HOLDERS: usize = 100;
 pub const MAX_SNAPSHOT_BATCH: u8 = 5;
+pub const MAX_PROPOSAL_TITLE_BYTES: usize = 128;
+pub const MAX_VOTING_PERIOD_SECONDS: i64 = 31_536_000;
+pub const BPS_DENOMINATOR: u128 = 10_000;
 
 #[program]
 pub mod kase_treasury {
@@ -1267,6 +1272,293 @@ pub mod kase_treasury {
         });
         Ok(())
     }
+
+    pub fn create_proposal(
+        ctx: Context<CreateProposal>,
+        proposal_id: [u8; 32],
+        title: String,
+        content_hash: [u8; 32],
+        voting_start_ts: i64,
+        voting_end_ts: i64,
+        quorum_bps: u16,
+        approval_bps: u16,
+    ) -> Result<()> {
+        let now = Clock::get()?;
+        let snapshot = &ctx.accounts.snapshot;
+        require!(proposal_id != [0; 32], ErrorCode::InvalidProposalId);
+        require!(content_hash != [0; 32], ErrorCode::InvalidProposalContent);
+        require!(
+            !title.trim().is_empty() && title.as_bytes().len() <= MAX_PROPOSAL_TITLE_BYTES,
+            ErrorCode::InvalidProposalTitle
+        );
+        require!(
+            voting_start_ts >= now.unix_timestamp
+                && voting_end_ts > voting_start_ts
+                && voting_end_ts
+                    .checked_sub(voting_start_ts)
+                    .is_some_and(|duration| duration <= MAX_VOTING_PERIOD_SECONDS),
+            ErrorCode::InvalidVotingWindow
+        );
+        require!(
+            quorum_bps > 0 && u128::from(quorum_bps) <= BPS_DENOMINATOR,
+            ErrorCode::InvalidGovernanceThreshold
+        );
+        require!(
+            u128::from(approval_bps) <= BPS_DENOMINATOR,
+            ErrorCode::InvalidGovernanceThreshold
+        );
+        require!(
+            ctx.accounts.bond.status != Status::Redeemed,
+            ErrorCode::BondRedeemed
+        );
+        require!(
+            ctx.accounts.bond.status == Status::IssuanceClosed,
+            ErrorCode::IssuanceNotClosed
+        );
+        require!(
+            snapshot.status == SnapshotStatus::Finalized
+                && snapshot.bond == ctx.accounts.bond.key()
+                && snapshot.expected_holder_count > 0
+                && snapshot.total_units > 0,
+            ErrorCode::SnapshotNotFinalized
+        );
+
+        let proposal = &mut ctx.accounts.proposal;
+        proposal.bond = ctx.accounts.bond.key();
+        proposal.snapshot = snapshot.key();
+        proposal.issuer = ctx.accounts.authority.key();
+        proposal.proposal_id = proposal_id;
+        proposal.title = title;
+        proposal.content_hash = content_hash;
+        proposal.voting_start_ts = voting_start_ts;
+        proposal.voting_end_ts = voting_end_ts;
+        proposal.quorum_bps = quorum_bps;
+        proposal.approval_bps = approval_bps;
+        proposal.eligible_voting_power = snapshot.total_units;
+        proposal.yes_voting_power = 0;
+        proposal.no_voting_power = 0;
+        proposal.abstain_voting_power = 0;
+        proposal.participating_voting_power = 0;
+        proposal.voter_count = 0;
+        proposal.status = ProposalStatus::Open;
+        proposal.created_at_ts = now.unix_timestamp;
+        proposal.created_slot = now.slot;
+        proposal.finalized_at_ts = 0;
+        proposal.finalized_slot = 0;
+        proposal.bump = ctx.bumps.proposal;
+        emit!(ProposalCreated {
+            proposal: proposal.key(),
+            bond: proposal.bond,
+            snapshot: proposal.snapshot,
+            issuer: proposal.issuer,
+            proposal_id,
+            eligible_voting_power: proposal.eligible_voting_power,
+            voting_start_ts,
+            voting_end_ts,
+        });
+        Ok(())
+    }
+
+    pub fn cast_vote(ctx: Context<CastVote>, choice: VoteChoice) -> Result<()> {
+        let now = Clock::get()?;
+        let proposal = &mut ctx.accounts.proposal;
+        let snapshot = &ctx.accounts.snapshot;
+        let entry = &ctx.accounts.snapshot_entry;
+        require!(
+            proposal.status == ProposalStatus::Open,
+            ErrorCode::ProposalNotOpen
+        );
+        require!(
+            now.unix_timestamp >= proposal.voting_start_ts,
+            ErrorCode::VotingNotStarted
+        );
+        require!(
+            now.unix_timestamp < proposal.voting_end_ts,
+            ErrorCode::VotingEnded
+        );
+        require!(
+            snapshot.status == SnapshotStatus::Finalized
+                && snapshot.key() == proposal.snapshot
+                && snapshot.bond == proposal.bond
+                && snapshot.total_units == proposal.eligible_voting_power,
+            ErrorCode::WrongSnapshot
+        );
+        require!(
+            entry.snapshot == snapshot.key()
+                && entry.bond == proposal.bond
+                && entry.holder == ctx.accounts.holder.key()
+                && entry.units > 0,
+            ErrorCode::IneligibleVoter
+        );
+
+        let participating = proposal
+            .participating_voting_power
+            .checked_add(entry.units)
+            .ok_or(ErrorCode::Overflow)?;
+        require!(
+            participating <= proposal.eligible_voting_power,
+            ErrorCode::GovernanceAccountingMismatch
+        );
+        match choice {
+            VoteChoice::Yes => {
+                proposal.yes_voting_power = proposal
+                    .yes_voting_power
+                    .checked_add(entry.units)
+                    .ok_or(ErrorCode::Overflow)?;
+            }
+            VoteChoice::No => {
+                proposal.no_voting_power = proposal
+                    .no_voting_power
+                    .checked_add(entry.units)
+                    .ok_or(ErrorCode::Overflow)?;
+            }
+            VoteChoice::Abstain => {
+                proposal.abstain_voting_power = proposal
+                    .abstain_voting_power
+                    .checked_add(entry.units)
+                    .ok_or(ErrorCode::Overflow)?;
+            }
+        }
+        proposal.participating_voting_power = participating;
+        proposal.voter_count = proposal
+            .voter_count
+            .checked_add(1)
+            .ok_or(ErrorCode::Overflow)?;
+        require!(
+            proposal.voter_count <= MAX_HOLDERS as u8,
+            ErrorCode::GovernanceAccountingMismatch
+        );
+        require!(
+            governance_vote_sum(proposal)? == proposal.participating_voting_power,
+            ErrorCode::GovernanceAccountingMismatch
+        );
+
+        let receipt = &mut ctx.accounts.receipt;
+        receipt.proposal = proposal.key();
+        receipt.voter = ctx.accounts.holder.key();
+        receipt.weight = entry.units;
+        receipt.choice = choice;
+        receipt.cast_at_ts = now.unix_timestamp;
+        receipt.cast_slot = now.slot;
+        receipt.bump = ctx.bumps.receipt;
+        emit!(VoteCast {
+            proposal: proposal.key(),
+            voter: receipt.voter,
+            choice,
+            weight: receipt.weight,
+            participating_voting_power: participating,
+            voter_count: proposal.voter_count,
+        });
+        Ok(())
+    }
+
+    pub fn finalize_proposal(ctx: Context<FinalizeProposal>) -> Result<()> {
+        let now = Clock::get()?;
+        let proposal = &mut ctx.accounts.proposal;
+        require!(
+            proposal.status == ProposalStatus::Open,
+            ErrorCode::ProposalNotOpen
+        );
+        require!(
+            now.unix_timestamp >= proposal.voting_end_ts,
+            ErrorCode::VotingNotEnded
+        );
+        require!(
+            ctx.accounts.snapshot.status == SnapshotStatus::Finalized
+                && ctx.accounts.snapshot.key() == proposal.snapshot
+                && ctx.accounts.snapshot.bond == proposal.bond
+                && ctx.accounts.snapshot.total_units == proposal.eligible_voting_power,
+            ErrorCode::WrongSnapshot
+        );
+        require!(
+            proposal.eligible_voting_power > 0
+                && proposal.voter_count <= ctx.accounts.snapshot.expected_holder_count
+                && governance_vote_sum(proposal)? == proposal.participating_voting_power
+                && proposal.participating_voting_power <= proposal.eligible_voting_power,
+            ErrorCode::GovernanceAccountingMismatch
+        );
+        let quorum_met = u128::from(proposal.participating_voting_power)
+            .checked_mul(BPS_DENOMINATOR)
+            .ok_or(ErrorCode::Overflow)?
+            >= u128::from(proposal.eligible_voting_power)
+                .checked_mul(u128::from(proposal.quorum_bps))
+                .ok_or(ErrorCode::Overflow)?;
+        let decisive_votes = proposal
+            .yes_voting_power
+            .checked_add(proposal.no_voting_power)
+            .ok_or(ErrorCode::Overflow)?;
+        let approval_met = decisive_votes > 0
+            && u128::from(proposal.yes_voting_power)
+                .checked_mul(BPS_DENOMINATOR)
+                .ok_or(ErrorCode::Overflow)?
+                > u128::from(decisive_votes)
+                    .checked_mul(u128::from(proposal.approval_bps))
+                    .ok_or(ErrorCode::Overflow)?;
+        proposal.status = if quorum_met && approval_met {
+            ProposalStatus::Passed
+        } else {
+            ProposalStatus::Rejected
+        };
+        proposal.finalized_at_ts = now.unix_timestamp;
+        proposal.finalized_slot = now.slot;
+        emit!(ProposalFinalized {
+            proposal: proposal.key(),
+            status: proposal.status,
+            eligible_voting_power: proposal.eligible_voting_power,
+            yes_voting_power: proposal.yes_voting_power,
+            no_voting_power: proposal.no_voting_power,
+            abstain_voting_power: proposal.abstain_voting_power,
+            participating_voting_power: proposal.participating_voting_power,
+            quorum_met,
+        });
+        Ok(())
+    }
+}
+
+#[derive(Accounts)]
+#[instruction(proposal_id: [u8; 32])]
+pub struct CreateProposal<'info> {
+    #[account(seeds=[ISSUER, config.id.as_ref()], bump=config.bump, has_one=authority)]
+    pub config: Account<'info, IssuerConfig>,
+    #[account(mut)]
+    pub authority: Signer<'info>,
+    #[account(seeds=[BOND, config.key().as_ref(), bond.id.as_ref()], bump=bond.bump, has_one=config)]
+    pub bond: Account<'info, Bond>,
+    #[account(seeds=[SNAPSHOT, bond.key().as_ref(), snapshot.snapshot_id.as_ref()], bump=snapshot.bump, has_one=bond)]
+    pub snapshot: Account<'info, RecordDateSnapshot>,
+    #[account(init, payer=authority, space=Proposal::SPACE, seeds=[PROPOSAL, bond.key().as_ref(), proposal_id.as_ref()], bump)]
+    pub proposal: Account<'info, Proposal>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct CastVote<'info> {
+    #[account(mut, seeds=[PROPOSAL, bond.key().as_ref(), proposal.proposal_id.as_ref()], bump=proposal.bump, has_one=bond, has_one=snapshot)]
+    pub proposal: Account<'info, Proposal>,
+    #[account(seeds=[BOND, bond.config.as_ref(), bond.id.as_ref()], bump=bond.bump)]
+    pub bond: Account<'info, Bond>,
+    #[account(seeds=[SNAPSHOT, bond.key().as_ref(), snapshot.snapshot_id.as_ref()], bump=snapshot.bump, has_one=bond)]
+    pub snapshot: Account<'info, RecordDateSnapshot>,
+    #[account(mut)]
+    pub holder: Signer<'info>,
+    #[account(seeds=[SNAPSHOT_ENTRY, snapshot.key().as_ref(), holder.key().as_ref()], bump=snapshot_entry.bump)]
+    pub snapshot_entry: Account<'info, SnapshotEntry>,
+    #[account(init, payer=payer, space=VoteReceipt::SPACE, seeds=[VOTE_RECEIPT, proposal.key().as_ref(), holder.key().as_ref()], bump)]
+    pub receipt: Account<'info, VoteReceipt>,
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct FinalizeProposal<'info> {
+    #[account(mut, seeds=[PROPOSAL, bond.key().as_ref(), proposal.proposal_id.as_ref()], bump=proposal.bump, has_one=bond, has_one=snapshot)]
+    pub proposal: Account<'info, Proposal>,
+    #[account(seeds=[BOND, bond.config.as_ref(), bond.id.as_ref()], bump=bond.bump)]
+    pub bond: Account<'info, Bond>,
+    #[account(seeds=[SNAPSHOT, bond.key().as_ref(), snapshot.snapshot_id.as_ref()], bump=snapshot.bump, has_one=bond)]
+    pub snapshot: Account<'info, RecordDateSnapshot>,
+    pub finalizer: Signer<'info>,
 }
 
 #[derive(Accounts)]
@@ -1822,6 +2114,63 @@ pub enum RedemptionStatus {
 }
 
 #[account]
+pub struct Proposal {
+    pub bond: Pubkey,
+    pub snapshot: Pubkey,
+    pub issuer: Pubkey,
+    pub proposal_id: [u8; 32],
+    pub content_hash: [u8; 32],
+    pub title: String,
+    pub voting_start_ts: i64,
+    pub voting_end_ts: i64,
+    pub quorum_bps: u16,
+    pub approval_bps: u16,
+    pub eligible_voting_power: u64,
+    pub yes_voting_power: u64,
+    pub no_voting_power: u64,
+    pub abstain_voting_power: u64,
+    pub participating_voting_power: u64,
+    pub voter_count: u8,
+    pub status: ProposalStatus,
+    pub created_at_ts: i64,
+    pub created_slot: u64,
+    pub finalized_at_ts: i64,
+    pub finalized_slot: u64,
+    pub bump: u8,
+}
+impl Proposal {
+    pub const SPACE: usize = 395;
+}
+
+#[account]
+pub struct VoteReceipt {
+    pub proposal: Pubkey,
+    pub voter: Pubkey,
+    pub weight: u64,
+    pub choice: VoteChoice,
+    pub cast_at_ts: i64,
+    pub cast_slot: u64,
+    pub bump: u8,
+}
+impl VoteReceipt {
+    pub const SPACE: usize = 98;
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum VoteChoice {
+    Yes,
+    No,
+    Abstain,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ProposalStatus {
+    Open,
+    Passed,
+    Rejected,
+}
+
+#[account]
 pub struct IssuerConfig {
     pub id: [u8; 32],
     pub authority: Pubkey,
@@ -2007,6 +2356,38 @@ pub struct RedemptionClaimed {
     pub paid_total_base: u64,
 }
 #[event]
+pub struct ProposalCreated {
+    pub proposal: Pubkey,
+    pub bond: Pubkey,
+    pub snapshot: Pubkey,
+    pub issuer: Pubkey,
+    pub proposal_id: [u8; 32],
+    pub eligible_voting_power: u64,
+    pub voting_start_ts: i64,
+    pub voting_end_ts: i64,
+}
+#[event]
+pub struct VoteCast {
+    pub proposal: Pubkey,
+    pub voter: Pubkey,
+    pub choice: VoteChoice,
+    pub weight: u64,
+    pub participating_voting_power: u64,
+    pub voter_count: u8,
+}
+#[event]
+pub struct ProposalFinalized {
+    pub proposal: Pubkey,
+    pub status: ProposalStatus,
+    pub eligible_voting_power: u64,
+    pub yes_voting_power: u64,
+    pub no_voting_power: u64,
+    pub abstain_voting_power: u64,
+    pub participating_voting_power: u64,
+    pub quorum_met: bool,
+}
+
+#[event]
 pub struct IssuerInitialized {
     pub config: Pubkey,
     pub authority: Pubkey,
@@ -2190,6 +2571,44 @@ pub enum ErrorCode {
     RedemptionNotFunded,
     #[msg("Redemption has not been activated.")]
     RedemptionNotActive,
+    #[msg("Proposal identifier cannot be zero.")]
+    InvalidProposalId,
+    #[msg("Proposal content hash cannot be zero.")]
+    InvalidProposalContent,
+    #[msg("Proposal title is empty or exceeds its byte limit.")]
+    InvalidProposalTitle,
+    #[msg("Voting window is invalid, retroactive, or longer than the supported maximum.")]
+    InvalidVotingWindow,
+    #[msg("Quorum or approval threshold is outside 0-10000 basis points.")]
+    InvalidGovernanceThreshold,
+    #[msg("Bond has entered terminal redemption state.")]
+    BondRedeemed,
+    #[msg("Proposal is not open.")]
+    ProposalNotOpen,
+    #[msg("Voting has not started.")]
+    VotingNotStarted,
+    #[msg("Voting window has ended.")]
+    VotingEnded,
+    #[msg("Voting window has not ended.")]
+    VotingNotEnded,
+    #[msg("Voter is not eligible in the proposal snapshot.")]
+    IneligibleVoter,
+    #[msg("Governance vote totals do not reconcile with snapshot power.")]
+    GovernanceAccountingMismatch,
+}
+
+fn governance_vote_sum(proposal: &Proposal) -> Result<u64> {
+    checked_governance_vote_sum(
+        proposal.yes_voting_power,
+        proposal.no_voting_power,
+        proposal.abstain_voting_power,
+    )
+}
+
+fn checked_governance_vote_sum(yes: u64, no: u64, abstain: u64) -> Result<u64> {
+    yes.checked_add(no)
+        .and_then(|sum| sum.checked_add(abstain))
+        .ok_or_else(|| error!(ErrorCode::Overflow))
 }
 
 fn check_dset_mint(mint: &UncheckedAccount) -> Result<()> {
@@ -2482,6 +2901,8 @@ mod tests {
         assert_eq!(RedemptionAuthority::SPACE, 41);
         assert_eq!(Redemption::SPACE, 300);
         assert_eq!(RedemptionReceipt::SPACE, 97);
+        assert_eq!(Proposal::SPACE, 395);
+        assert_eq!(VoteReceipt::SPACE, 98);
         assert_eq!(
             principal_total_base(17, 1_000_000_000).unwrap(),
             17_000_000_000
@@ -2491,6 +2912,12 @@ mod tests {
     #[test]
     fn principal_math_rejects_u64_overflow() {
         assert!(principal_total_base(u64::MAX, 2).is_err());
+    }
+    #[test]
+    fn governance_vote_sum_rejects_overflow() {
+        assert_eq!(checked_governance_vote_sum(10, 5, 2).unwrap(), 17);
+        assert!(checked_governance_vote_sum(u64::MAX, 1, 0).is_err());
+        assert!(checked_governance_vote_sum(0, u64::MAX, 1).is_err());
     }
     #[test]
     fn maximum_holder_count_is_one_hundred() {

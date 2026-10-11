@@ -1,6 +1,6 @@
 # KASE Treasury — Protocol Specification
 
-**Status:** M1-M5 financial model, issuance/registry, snapshots, coupon settlement, and principal redemption are implemented and local-validator tested. Governance, frontend integration, and Devnet remain future work.
+**Status:** M1-M6 financial model, issuance/registry, snapshots, coupon settlement, principal redemption, and informational governance are implemented and local-validator tested. Frontend integration and Devnet remain future work.
 
 ## Financial model
 
@@ -32,7 +32,7 @@ Displayed amounts multiply by 1,000,000 for token base units; all example amount
 
 Only the configured DSET mint is supported for payment. Each action must be fully funded before entering `Funded`; no partial completion or mint-on-demand. A token transfer, ClaimRecord creation, and accounting update occur atomically. Underfunding blocks the action.
 
-## M2–M3 accounts and later planned accounts
+## On-chain account model
 
 | Account | Status and identity |
 | --- | --- |
@@ -55,11 +55,12 @@ Only the configured DSET mint is supported for payment. Each action must be full
 | RedemptionAuthority | Implemented PDA [redemption_authority, Redemption]; controls separate principal escrow. |
 | Redemption escrow | Implemented classic SPL token PDA [redemption_vault, Redemption]. |
 | RedemptionReceipt | Implemented M5 PDA [redemption_claim, Redemption + holder]; exact amount and paid time/slot. |
-| Proposal, VoteRecord | Planned snapshot-weighted governance and unique vote. |
+| Proposal | Implemented M6 PDA [governance_proposal, bond, proposal_id]; immutable terms, snapshot, window, thresholds, eligibility, tallies and status. |
+| VoteReceipt | Implemented M6 PDA [vote_receipt, proposal, holder]; one signed immutable choice and snapshot-derived weight per holder. |
 
 close_issuance reconciles mint supply and vault amount with Bond counters and RegistryState.total_units. Position and aggregate counters are updated atomically by the only M2 issuance paths; closure does not iterate all Position accounts. This is an accounting invariant, not an independent audit scan.
 
-M2–M4 are implemented in one Rust source file. Generated IDL/types and deploy artifacts under ignored target/ are build output. Events cover issuer, authority, bond, position, snapshot, settlement-mint configuration, coupon creation, funding, and claims.
+M2-M6 are implemented in one Rust source file. Generated IDL/types and deploy artifacts under ignored target/ are build output. Events cover issuer, authority, bond, position, snapshot, settlement-mint configuration, coupon creation/funding/claims, redemption, proposal creation, votes and final results.
 
 ## Record-date design
 
@@ -75,18 +76,18 @@ The implemented rule is a deterministic freeze:
 
 A future cutoff is reliable because the registry is frozen before that date. Late processing records the same units. No transfers are allowed in the MVP. The 100-holder and 5-entry batch limits bound work. The program does not reconstruct past account state.
 
-M4 coupon claims reference the finalized snapshot and use immutable SnapshotEntry units. Future redemption and governance must use the applicable finalized snapshot. Later ownership models cannot revise finalized entitlements.
+M4 coupon claims, M5 principal claims, and M6 governance votes use the applicable finalized snapshot and immutable SnapshotEntry units. Later ownership models cannot revise finalized entitlements.
 
 ## Lifecycle, instructions, and settlement
 
-Implemented M2 instructions: initialize_issuer, propose_issuer_authority, accept_issuer_authority, create_bond, register_holder, issue_units, close_issuance. Implemented M3 instructions: create_snapshot, process_snapshot_batch, finalize_snapshot. Implemented M4 instructions: configure_settlement_mint, create_coupon_period, fund_coupon_period, claim_coupon. Implemented M5 instructions: create_redemption, fund_redemption, activate_redemption, claim_redemption. Registration requires issuer and holder signatures and mints to BondVault. close_issuance reconciles supply then revokes mint authority. Governance remains future work.
+Implemented M2 instructions: initialize_issuer, propose_issuer_authority, accept_issuer_authority, create_bond, register_holder, issue_units, close_issuance. Implemented M3 instructions: create_snapshot, process_snapshot_batch, finalize_snapshot. Implemented M4 instructions: configure_settlement_mint, create_coupon_period, fund_coupon_period, claim_coupon. Implemented M5 instructions: create_redemption, fund_redemption, activate_redemption, claim_redemption. Implemented M6 instructions: create_proposal, cast_vote, finalize_proposal. Registration requires issuer and holder signatures and mints to BondVault. close_issuance reconciles supply then revokes mint authority.
 
 ```text
 Bond: Issuing -> IssuanceClosed -> Redeemed (terminal)
 Snapshot: Scheduled -> Processing -> Finalized (immutable)
 Coupon: Created -> Funded -> Complete (claim records remain immutable)
 Redemption: Created -> Funded -> Activated -> Complete
-Proposal: Draft -> Voting -> Finalized(Passed | Rejected | NoQuorum)
+Proposal: Open -> Passed | Rejected
 ```
 
 create_redemption is issuer-authorized and requires Clock time at/after immutable maturity, closed issuance, a finalized same-bond snapshot, and exact registry/Bond/mint/vault reconciliation. The unique [redemption, bond] PDA limits one principal event. Required principal is snapshot.total_units * bond.face_value_base, calculated with checked u128 then checked u64 conversion.
@@ -110,10 +111,17 @@ At/after payment date, a holder must sign `claim_coupon`. The program requires t
 
 The code uses the M1 example unchanged: 1,000 DSET face, 1,000 annual bps, two periods/year, producing 50 DSET per bond per period. A/B/C with 10/5/2 units receive 500/250/100 DSET; the total reserve is 850 DSET (850,000,000 base units). The per-bond result floors at one DSET base unit; fractions smaller than that are not included in the funded entitlement and are not redistributed. The example divides exactly.
 
-## Governance
+## Governance proposal and voting
 
-Only issuer authority creates a proposal. It fixes content hash/reference, finalized snapshot, voting interval, proposal type, and quorum at creation. Default period is 7 days; a shorter Devnet demo period is clearly marked demo-only. Voter is a holder in `SnapshotEntry`; weight is snapshot whole-bond units. `VoteRecord(proposal,holder)` permits one immutable vote; no split voting/delegation in MVP. Voting closes at end timestamp and may be finalized permissionlessly. Quorum is at least **50%** of eligible units cast; For, Against, and Abstain count toward quorum. It passes only if `For > Against`; abstain is excluded from that comparison, and tie/no quorum is rejected. A passed proposal records a result only. Any future term amendment requires a separate explicit issuer instruction, new terms version and future effective time; it cannot revise finalized snapshots or coupon entitlements.
+The issuer may create a proposal only for a closed, not-yet-redeemed bond and a nonempty finalized snapshot belonging to that bond. A unique 32-byte proposal ID derives the Proposal PDA. Creation stores the current issuer, snapshot, 1-128 byte title, nonzero 32-byte content hash, voting start/end, quorum/approval thresholds in basis points, and eligible voting power copied from snapshot total units. The content hash commits to client-retained proposal text; the program does not fetch or interpret external content. Terms have no update instruction.
 
+Voting starts at or after creation time and ends strictly after start; the maximum window is 365 days. Votes are accepted for Clock time in [start, end). Only the holder signing with the wallet matching a deterministic SnapshotEntry for this finalized snapshot can vote. Weight is the immutable entry's whole-bond units, never current SPL balances or Position values. The holder may cast one Yes, No or Abstain vote. A deterministic VoteReceipt PDA [vote_receipt, proposal, holder] is created once; a separate fee payer may cover rent, but cannot substitute for the holder signature. At most 100 voters can participate because the frozen registry has at most 100 holders.
+
+Every vote uses checked additions and maintains yes + no + abstain = participating power <= eligible snapshot power. voter_count cannot exceed the snapshot holder count. Permissionless finalization is allowed only at or after voting_end_ts, verifies the snapshot and accounting again, stores final totals/time/slot, and changes status once from Open to Passed or Rejected.
+
+The demo uses quorum_bps=5,000 and approval_bps=5,000. Quorum is met when participating_power * 10,000 >= eligible_power * quorum_bps; Abstain counts toward participation. Approval is met only when decisive power is nonzero and yes_power * 10,000 > (yes_power + no_power) * approval_bps. Thus exactly 50% Yes is not approval. Quorum failure, no Yes/No votes, abstain-only participation, or an approval tie results in Rejected. Calculations use checked u128 integers; no floating point is used. Thresholds are proposal-specific and must be between 1 and 10,000 bps for quorum and 0 and 10,000 bps for approval.
+
+Once Bond is terminal Redeemed, new proposals are rejected. Proposals already open at redemption remain open against their original finalized snapshot and may conclude; their result is informational only and cannot change bond, coupon, redemption, or snapshot state. A passed result is not an instruction executor. Any amendment needs a separate future-effective issuer instruction, must not change finalized coupon/redemption entitlements, and is outside M6. There is no delegation, split voting, cancellation, extension, or proposal-content hosting in the program.
 ## Invariants and failure behavior
 
 Reject unauthorized signer, bad PDA/owner/program/mint/decimals/account authority/vault/destination, stale/unfinalized snapshot, duplicate action/claim/redemption/vote, mutation at or after cutoff, invalid timestamps/rate/frequency, invalid state transition, overflow/underflow, incomplete or inconsistent snapshot, and insufficient reserves. Fail atomically.
